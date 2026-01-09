@@ -145,48 +145,94 @@
             }
 
             /**
-             * Dijkstra
+             * Distance & heuristic helpers
              */
-            function dijkstra(graph, start, end) {
-                const dist = {};
-                const prev = {};
-                const q = new Set(Object.keys(graph));
 
-                for (const v of q) {
-                    dist[v] = Infinity;
-                    prev[v] = null;
+            function haversine(a, b) {
+                const R = 6371000; // meters
+                const toRad = x => x * Math.PI / 180;
+
+                const dLat = toRad(b.lat - a.lat);
+                const dLng = toRad(b.lng - a.lng);
+
+                const lat1 = toRad(a.lat);
+                const lat2 = toRad(b.lat);
+
+                const h =
+                    Math.sin(dLat / 2) ** 2 +
+                    Math.cos(lat1) * Math.cos(lat2) *
+                    Math.sin(dLng / 2) ** 2;
+
+                return 2 * R * Math.asin(Math.sqrt(h));
+            }
+
+
+            /**
+             * A* function
+             */
+            function aStar(graph, nodeCoords, start, goal) {
+                const openSet = new Set([start]);
+                const cameFrom = {};
+
+                const gScore = {};
+                const fScore = {};
+
+                for (const v in graph) {
+                    gScore[v] = Infinity;
+                    fScore[v] = Infinity;
                 }
 
-                dist[start] = 0;
+                gScore[start] = 0;
+                fScore[start] = haversine(
+                    nodeCoords[start],
+                    nodeCoords[goal]
+                );
 
-                while (q.size) {
-                    let u = null;
-                    for (const v of q) {
-                        if (u === null || dist[v] < dist[u]) u = v;
+                while (openSet.size) {
+                    let current = null;
+
+                    for (const v of openSet) {
+                        if (current === null || fScore[v] < fScore[current]) {
+                            current = v;
+                        }
                     }
 
-                    if (dist[u] === Infinity) break;
-                    if (u === end) break;
+                    if (current === goal) {
+                        const path = [];
+                        let c = current;
+                        while (c) {
+                            path.push(c);
+                            c = cameFrom[c];
+                        }
+                        return path.reverse();
+                    }
 
-                    q.delete(u);
+                    openSet.delete(current);
 
-                    for (const n in graph[u]) {
-                        const alt = dist[u] + graph[u][n];
-                        if (alt < dist[n]) {
-                            dist[n] = alt;
-                            prev[n] = u;
+                    for (const neighbor in graph[current]) {
+                        const tentativeG =
+                            gScore[current] +
+                            haversine(
+                                nodeCoords[current],
+                                nodeCoords[neighbor]
+                            );
+
+                        if (tentativeG < gScore[neighbor]) {
+                            cameFrom[neighbor] = current;
+                            gScore[neighbor] = tentativeG;
+                            fScore[neighbor] =
+                                tentativeG +
+                                haversine(
+                                    nodeCoords[neighbor],
+                                    nodeCoords[goal]
+                                );
+
+                            openSet.add(neighbor);
                         }
                     }
                 }
 
-                const path = [];
-                let cur = end;
-                while (cur) {
-                    path.push(cur);
-                    cur = prev[cur];
-                }
-
-                return path.length ? path.reverse() : null;
+                return null;
             }
 
             /**
@@ -218,7 +264,7 @@
 
                 map.fitBounds(bounds);
 
-                console.log("Route points:", coords.length);
+                console.log("Path length:", path?.length);
             }
 
             /**
@@ -242,7 +288,7 @@
                     return;
                 }
 
-                const path = dijkstra(graph, start, end);
+                const path = aStar(graph, nodeCoords, start, end);
                 visualizeRoute(path, nodeCoords);
             }
         </script>
