@@ -195,21 +195,29 @@
              * Draw route
              */
             function visualizeRoute(path, nodeCoords) {
-                if (!path) {
+                if (!path || path.length < 2) {
                     alert("No route found");
                     return;
                 }
 
-                const coords = path.map(id => nodeCoords[id]);
+                const coords = path
+                    .map(id => nodeCoords[id])
+                    .filter(c => c && isFinite(c.lat) && isFinite(c.lng));
 
-                new google.maps.Polyline({
+                if (coords.length < 2) {
+                    alert("Route geometry invalid");
+                    return;
+                }
+
+                const polyline = new google.maps.Polyline({
                     path: coords,
-                    map,
+                    map: map,
                     strokeWeight: 5
                 });
 
                 const bounds = new google.maps.LatLngBounds();
                 coords.forEach(c => bounds.extend(c));
+
                 map.fitBounds(bounds);
             }
 
