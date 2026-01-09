@@ -76,10 +76,8 @@
             async function fetchStreetData() {
                 const query = `
                     [out:json];
-                    (
-                        node(around:1000, ${centerCoordinates.lat}, ${centerCoordinates.lng});
-                        way["highway"](around:1000, ${centerCoordinates.lat}, ${centerCoordinates.lng});
-                    );
+                    way["highway"](around:1000, ${centerCoordinates.lat}, ${centerCoordinates.lng});
+                    (._;>;);
                     out body;
                 `;
 
@@ -219,6 +217,8 @@
                 coords.forEach(c => bounds.extend(c));
 
                 map.fitBounds(bounds);
+
+                console.log("Route points:", coords.length);
             }
 
             /**
