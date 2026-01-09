@@ -80,19 +80,17 @@
             async function fetchStreetData() {
                 const query = `
                     [out:json];
-                    {
+                    (
                         way["highway"](around:1000, ${centerCoordinates.lat}, ${centerCoordinates.lng});
                         relation["highway"](around:1000, ${centerCoordinates.lat}, ${centerCoordinates.lng});
-                    }
-                    
+                    );
                     out body;
                 `;
-
-                const response = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`);
+                
+                const response = await fetch(`http://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`);
                 const data = await response.json();
-
                 return data;
-            };
+            }
 
             function buildGraph(data) {
                 const graph = {};
@@ -100,28 +98,17 @@
                     if (element.type === 'way') {
                         const nodes = element.nodes;
                         for (let i = 0; i < nodes.length - 1; i++) {
-                            
-                            // Instance Variables
                             const from = nodes[i];
                             const to = nodes[i + 1];
-                            
-                            // Initialize vars
-                            if (!graph[from]){
-                                graph[from] = {};
-                            };
-
-                            if (!graph[to]){
-                                graph[to] = {};
-                            };
-
-                            graph[from][to] = 1; // Add weight; Can be changed based on relevant factors.
-                            graph[to][from] = 1; // Add bidirectional edge.
+                            if (!graph[from]) graph[from] = {};
+                            if (!graph[to]) graph[to] = {};
+                            graph[from][to] = 1; // Add weight; you can change this based on distance or other factors
+                            graph[to][from] = 1; // Add bidirectional edge
                         }
                     }
                 });
-
                 return graph;
-            };
+            }
 
             function dijkstra(graph, start, end) {
                 const distances = {};
