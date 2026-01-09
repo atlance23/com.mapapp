@@ -56,24 +56,22 @@
             /**
              * Constants
              */
-            const centerCoordinates = { lat: 38.6251, lng: -90.1868 }; // St. Louis area
+            const centerCoordinates = { lat: 38.6251, lng: -90.1868 };
+            let map;
 
             /**
-             * Initialize Map
+             * Initialize Google Map
              */
-            const map = L.map('map').setView(
-                [centerCoordinates.lat, centerCoordinates.lng],
-                15
-            );
-
-            // Proper tile layer (Leaflet-compatible)
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                maxZoom: 19,
-                attribution: '© OpenStreetMap contributors'
-            }).addTo(map);
+            function initMap() {
+                map = new google.maps.Map(document.getElementById("map"), {
+                    center: centerCoordinates,
+                    zoom: 15,
+                    mapTypeId: "roadmap"
+                });
+            }
 
             /**
-             * Fetch OSM data (nodes + ways)
+             * Fetch OSM data
              */
             async function fetchStreetData() {
                 const query = `
@@ -85,41 +83,40 @@
                     out body;
                 `;
 
-                const response = await fetch(
-                    'https://overpass-api.de/api/interpreter?data=' +
+                const res = await fetch(
+                    "https://overpass-api.de/api/interpreter?data=" +
                     encodeURIComponent(query)
                 );
-                return response.json();
+
+                return res.json();
             }
 
             /**
-             * Build graph + node coordinate lookup
+             * Build graph
              */
             function buildGraph(data) {
                 const graph = {};
                 const nodeCoords = {};
 
-                // Store node coordinates
                 data.elements.forEach(el => {
-                    if (el.type === 'node') {
-                        nodeCoords[el.id] = [el.lat, el.lon];
+                    if (el.type === "node") {
+                        nodeCoords[el.id] = { lat: el.lat, lng: el.lon };
                     }
                 });
 
-                // Build graph from ways
                 data.elements.forEach(el => {
-                    if (el.type === 'way' && el.nodes) {
+                    if (el.type === "way" && el.nodes) {
                         for (let i = 0; i < el.nodes.length - 1; i++) {
-                            const from = el.nodes[i];
-                            const to = el.nodes[i + 1];
+                            const a = el.nodes[i];
+                            const b = el.nodes[i + 1];
 
-                            if (!nodeCoords[from] || !nodeCoords[to]) continue;
+                            if (!nodeCoords[a] || !nodeCoords[b]) continue;
 
-                            if (!graph[from]) graph[from] = {};
-                            if (!graph[to]) graph[to] = {};
+                            graph[a] ??= {};
+                            graph[b] ??= {};
 
-                            graph[from][to] = 1;
-                            graph[to][from] = 1;
+                            graph[a][b] = 1;
+                            graph[b][a] = 1;
                         }
                     }
                 });
@@ -128,17 +125,17 @@
             }
 
             /**
-             * Find nearest graph node to lat/lng
+             * Nearest node lookup
              */
             function findNearestNode(lat, lng, nodeCoords) {
                 let nearest = null;
                 let minDist = Infinity;
 
                 for (const id in nodeCoords) {
-                    const [nLat, nLng] = nodeCoords[id];
+                    const n = nodeCoords[id];
                     const d =
-                        Math.pow(lat - nLat, 2) +
-                        Math.pow(lng - nLng, 2);
+                        Math.pow(lat - n.lat, 2) +
+                        Math.pow(lng - n.lng, 2);
 
                     if (d < minDist) {
                         minDist = d;
@@ -153,46 +150,42 @@
              * Dijkstra
              */
             function dijkstra(graph, start, end) {
-                const distances = {};
-                const previous = {};
-                const queue = new Set(Object.keys(graph));
+                const dist = {};
+                const prev = {};
+                const q = new Set(Object.keys(graph));
 
-                for (const v of queue) {
-                    distances[v] = Infinity;
-                    previous[v] = null;
+                for (const v of q) {
+                    dist[v] = Infinity;
+                    prev[v] = null;
                 }
 
-                distances[start] = 0;
+                dist[start] = 0;
 
-                while (queue.size) {
-                    let current = null;
-
-                    for (const v of queue) {
-                        if (current === null || distances[v] < distances[current]) {
-                            current = v;
-                        }
+                while (q.size) {
+                    let u = null;
+                    for (const v of q) {
+                        if (u === null || dist[v] < dist[u]) u = v;
                     }
 
-                    if (distances[current] === Infinity) break;
-                    if (current === end) break;
+                    if (dist[u] === Infinity) break;
+                    if (u === end) break;
 
-                    queue.delete(current);
+                    q.delete(u);
 
-                    for (const neighbor in graph[current]) {
-                        const alt = distances[current] + graph[current][neighbor];
-                        if (alt < distances[neighbor]) {
-                            distances[neighbor] = alt;
-                            previous[neighbor] = current;
+                    for (const n in graph[u]) {
+                        const alt = dist[u] + graph[u][n];
+                        if (alt < dist[n]) {
+                            dist[n] = alt;
+                            prev[n] = u;
                         }
                     }
                 }
 
                 const path = [];
                 let cur = end;
-
                 while (cur) {
                     path.push(cur);
-                    cur = previous[cur];
+                    cur = prev[cur];
                 }
 
                 return path.length ? path.reverse() : null;
@@ -203,47 +196,54 @@
              */
             function visualizeRoute(path, nodeCoords) {
                 if (!path) {
-                    alert('No route found');
+                    alert("No route found");
                     return;
                 }
 
                 const coords = path.map(id => nodeCoords[id]);
-                const polyline = L.polyline(coords, { weight: 5 }).addTo(map);
-                map.fitBounds(polyline.getBounds());
+
+                new google.maps.Polyline({
+                    path: coords,
+                    map,
+                    strokeWeight: 5
+                });
+
+                const bounds = new google.maps.LatLngBounds();
+                coords.forEach(c => bounds.extend(c));
+                map.fitBounds(bounds);
             }
 
             /**
-             * Main entry
+             * Main
              */
             async function findPath() {
-                const sourceInput = document.getElementById('source').value.split(',');
-                const destInput = document.getElementById('destination').value.split(',');
+                const s = document.getElementById("source").value.split(",");
+                const d = document.getElementById("destination").value.split(",");
 
-                const source = {
-                    lat: parseFloat(sourceInput[0]),
-                    lng: parseFloat(sourceInput[1])
-                };
-
-                const dest = {
-                    lat: parseFloat(destInput[0]),
-                    lng: parseFloat(destInput[1])
-                };
+                const source = { lat: parseFloat(s[0]), lng: parseFloat(s[1]) };
+                const dest = { lat: parseFloat(d[0]), lng: parseFloat(d[1]) };
 
                 const data = await fetchStreetData();
                 const { graph, nodeCoords } = buildGraph(data);
 
-                const startNode = findNearestNode(source.lat, source.lng, nodeCoords);
-                const endNode = findNearestNode(dest.lat, dest.lng, nodeCoords);
+                const start = findNearestNode(source.lat, source.lng, nodeCoords);
+                const end = findNearestNode(dest.lat, dest.lng, nodeCoords);
 
-                if (!startNode || !endNode) {
-                    alert('Could not find nearby roads');
+                if (!start || !end) {
+                    alert("No nearby road nodes found");
                     return;
                 }
 
-                const path = dijkstra(graph, startNode, endNode);
+                const path = dijkstra(graph, start, end);
                 visualizeRoute(path, nodeCoords);
             }
         </script>
+        <script
+            async
+            defer
+            src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBQlrZtfXXjfw6D-wDmNIAOxEV20V5E2U8&callback=initMap">
+        </script>
+
         <footer>
 
         </footer>
