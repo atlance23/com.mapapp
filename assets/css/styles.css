@@ -56,6 +56,10 @@ body {
     padding: 20px;
     border-radius: 20px;
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
 }
 
 #controls > * {
@@ -69,6 +73,10 @@ body {
 
 .autocomplete-wrapper {
     height: 32px;
+}
+
+#controlsTitle {
+    text-align: center;
 }
 
 #computeRoute {
