@@ -233,14 +233,27 @@ function visualizeORSRoute(geojson) {
  */
 
 function printInstructions(geojson) {
-    const steps = geojson.features[0].properties.segments[0].steps;
+    const container = document.getElementById("instructions");
+    container.innerHTML = "";
 
-    console.group("[ORS] Turn-by-turn");
+    const steps = geojson.features[0]
+        .properties
+        .segments[0]
+        .steps;
+
+    const list = document.createElement("ol");
+    list.style.paddingLeft = "20px";
+
     steps.forEach(step => {
-        console.log(`${step.instruction} (${step.distance.toFixed(0)} m)`);
+        const item = document.createElement("li");
+        item.style.marginBottom = "8px";
+        item.textContent = `${step.instruction} (${step.distance.toFixed(0)} m)`;
+        list.appendChild(item);
     });
-    console.groupEnd();
+
+    container.appendChild(list);
 }
+
 
 /**
  * ============================
@@ -319,6 +332,41 @@ function withSnapRadius(coords, meters = 1000) {
 
 /**
  * ============================
+ * UI TOGGLE HELPER
+ * ============================
+ */
+
+function showDirectionsPanel() {
+    const controls = document.getElementById("controls");
+    const instructions = document.getElementById("instructions");
+
+    if (controls) controls.style.display = "none";
+    if (instructions) instructions.style.display = "block";
+}
+
+function resetRouteUI() {
+    const controls = document.getElementById("controls");
+    const instructions = document.getElementById("instructions");
+
+    if (controls) controls.style.display = "block";
+    if (instructions) instructions.style.display = "none";
+    if (instructions) instructions.innerHTML = "";
+}
+
+function addBackButton() {
+    const container = document.getElementById("instructions");
+
+    const btn = document.createElement("button");
+    btn.textContent = "Edit Route";
+    btn.style.marginBottom = "12px";
+    btn.onclick = resetRouteUI;
+
+    container.prepend(btn);
+}
+
+
+/**
+ * ============================
  * ENTRY POINT
  * ============================
  */
@@ -337,6 +385,8 @@ async function findPath() {
 
         visualizeORSRoute(geojson);
         printInstructions(geojson);
+        addBackButton();
+        showDirectionsPanel();
 
         console.info("[APP] Routing complete");
     } catch (err) {
