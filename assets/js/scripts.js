@@ -9,15 +9,19 @@ const ORS_API_KEY = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjA0YjU
 const CENTER_COORDINATES = { lat: 38.6251, lng: -90.1868 };
 const ROUTE_CACHE_PREFIX = "ors_route_";
 const GPS_UPDATE_MS = 1000;
+const STEP_ARRIVAL_METERS = 25;
+const REROUTE_THRESHOLD_METERS = 80;
 
 let map;
 let userMarker;
+let accuracyCircle;
 let routePolyline;
+let routeCoords = [];
 let navSteps = [];
 let currentStepIndex = 0;
 let watchId = null;
 
-/** ============================
+/* ============================
  * MAP INIT
  * ============================ */
 
@@ -25,19 +29,20 @@ function initMap() {
   map = new google.maps.Map(document.getElementById("map"), {
     center: CENTER_COORDINATES,
     zoom: 14,
+    tilt: 45,
     mapTypeId: "roadmap"
   });
 }
 
-/** ============================
- * GEOCODING / INPUT
+/* ============================
+ * INPUT → COORDINATES
  * ============================ */
 
 async function getPlaceCoordinates(el) {
   const raw = el.value.trim();
 
   if (/^-?\d+(\.\d+)?,\s*-?\d+(\.\d+)?$/.test(raw)) {
-    const [lat, lng] = raw.split(',').map(Number);
+    const [lat, lng] = raw.split(",").map(Number);
     return { lat, lng };
   }
 
@@ -54,7 +59,7 @@ async function getPlaceCoordinates(el) {
   });
 }
 
-/** ============================
+/* ============================
  * ROUTING (ORS)
  * ============================ */
 
@@ -71,7 +76,11 @@ async function routeWithORS(source, dest) {
     coordinates: [[source.lng, source.lat], [dest.lng, dest.lat]],
     radiuses: [1500, 1500],
     instructions: true,
-    preference: "fastest"
+    preference: "fastest",
+    options: {
+      traffic: true,
+      avoid_features: ["ferries"]
+    }
   };
 
   const res = await fetch(
@@ -93,7 +102,7 @@ async function routeWithORS(source, dest) {
   return data;
 }
 
-/** ============================
+/* ============================
  * NAVIGATION SETUP
  * ============================ */
 
@@ -101,18 +110,11 @@ function startNavigation(geojson) {
   navSteps = geojson.features[0].properties.segments[0].steps;
   currentStepIndex = 0;
 
-  if (routePolyline) routePolyline.setMap(null);
-
-  const coords = geojson.features[0].geometry.coordinates.map(
+  routeCoords = geojson.features[0].geometry.coordinates.map(
     ([lng, lat]) => ({ lat, lng })
   );
 
-  routePolyline = new google.maps.Polyline({
-    path: coords,
-    strokeColor: "#3498db",
-    strokeWeight: 5,
-    map
-  });
+  drawRoute(routeCoords);
 
   document.getElementById("controls").style.display = "none";
   document.getElementById("instructions").style.display = "block";
@@ -121,98 +123,154 @@ function startNavigation(geojson) {
   updateInstruction();
 }
 
-/** ============================
- * GPS + REALTIME UPDATES
+/* ============================
+ * ROUTE DRAWING (GOOGLE MAPS STYLE)
+ * ============================ */
+
+function drawRoute(coords) {
+  if (routePolyline) routePolyline.setMap(null);
+
+  new google.maps.Polyline({
+    path: coords,
+    strokeColor: "#ffffff",
+    strokeWeight: 10,
+    map
+  });
+
+  routePolyline = new google.maps.Polyline({
+    path: coords,
+    strokeColor: "#1a73e8",
+    strokeWeight: 6,
+    strokeLinecap: "round",
+    map
+  });
+}
+
+/* ============================
+ * GPS + COMPASS
  * ============================ */
 
 function startGPS() {
-  if (!navigator.geolocation) {
-    alert("Geolocation not supported");
-    return;
-  }
-
   watchId = navigator.geolocation.watchPosition(
     pos => {
-      const lat = pos.coords.latitude;
-      const lng = pos.coords.longitude;
-      const here = { lat, lng };
+      const here = {
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude
+      };
 
       if (!userMarker) {
         userMarker = new google.maps.Marker({
           position: here,
           map,
+          zIndex: 999,
           icon: {
             path: google.maps.SymbolPath.CIRCLE,
             scale: 8,
-            fillColor: "#1abc9c",
+            fillColor: "#1a73e8",
             fillOpacity: 1,
-            strokeWeight: 2
+            strokeColor: "#ffffff",
+            strokeWeight: 3
           }
+        });
+
+        accuracyCircle = new google.maps.Circle({
+          map,
+          center: here,
+          radius: pos.coords.accuracy,
+          fillColor: "#1a73e8",
+          fillOpacity: 0.15,
+          strokeOpacity: 0
         });
       } else {
         userMarker.setPosition(here);
+        accuracyCircle.setCenter(here);
+        accuracyCircle.setRadius(pos.coords.accuracy);
       }
 
-      map.setCenter(here);
-      map.setZoom(18);
+      map.setOptions({
+        zoom: 18,
+        heading: pos.coords.heading || map.getHeading() || 0,
+        tilt: 45
+      });
+
+      map.panTo(here);
 
       checkStepProgress(here);
+      checkOffRoute(here);
     },
-    err => alert("Location permission required"),
-    { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+    () => alert("Location permission required"),
+    { enableHighAccuracy: true, maximumAge: 500, timeout: 10000 }
   );
 }
 
-function stopGPS() {
-  if (watchId) navigator.geolocation.clearWatch(watchId);
-}
-
-/** ============================
- * STEP TRACKING
+/* ============================
+ * STEP PROGRESSION
  * ============================ */
 
 function checkStepProgress(position) {
-  if (!navSteps[currentStepIndex]) return;
+  const step = navSteps[currentStepIndex];
+  if (!step) return;
 
-  const wp = navSteps[currentStepIndex].way_points;
-  const target = routePolyline.getPath().getAt(wp[1]);
+  const target = routeCoords[step.way_points[1]];
 
   const dist = google.maps.geometry.spherical.computeDistanceBetween(
     new google.maps.LatLng(position.lat, position.lng),
-    target
+    new google.maps.LatLng(target.lat, target.lng)
   );
 
-  if (dist < 25) {
+  if (dist < STEP_ARRIVAL_METERS) {
     currentStepIndex++;
     updateInstruction();
   }
 }
 
+/* ============================
+ * AUTO REROUTING
+ * ============================ */
+
+async function checkOffRoute(position) {
+  const nearest = routeCoords.reduce((min, p) => {
+    const d = google.maps.geometry.spherical.computeDistanceBetween(
+      new google.maps.LatLng(position.lat, position.lng),
+      new google.maps.LatLng(p.lat, p.lng)
+    );
+    return d < min ? d : min;
+  }, Infinity);
+
+  if (nearest > REROUTE_THRESHOLD_METERS) {
+    const dest = routeCoords[routeCoords.length - 1];
+    const geojson = await routeWithORS(position, dest);
+    startNavigation(geojson);
+  }
+}
+
+/* ============================
+ * INSTRUCTION UI
+ * ============================ */
+
 function updateInstruction() {
   const container = document.getElementById("instructions");
   container.innerHTML = "";
 
-  if (!navSteps[currentStepIndex]) {
+  const step = navSteps[currentStepIndex];
+  if (!step) {
     container.innerHTML = "<strong>Destination reached</strong>";
-    stopGPS();
+    navigator.geolocation.clearWatch(watchId);
     return;
   }
 
-  const step = navSteps[currentStepIndex];
-
-  const card = document.createElement("div");
-  card.style.fontSize = "1.2rem";
-  card.style.padding = "12px";
-  card.style.border = "1px solid #ccc";
-  card.style.borderRadius = "8px";
-
-  card.innerHTML = `
-    <div style="font-size:2rem">${turnIcon(step)}</div>
-    <strong>${step.instruction}</strong><br>
-    <small>${step.distance.toFixed(0)} m</small>
+  container.innerHTML = `
+    <div style="
+      padding:16px;
+      font-family:Roboto,sans-serif;
+      background:#fff;
+      border-radius:12px;
+      box-shadow:0 4px 12px rgba(0,0,0,.15)">
+      <div style="font-size:32px">${turnIcon(step)}</div>
+      <strong>${step.instruction}</strong><br>
+      <small>${step.distance.toFixed(0)} m</small>
+    </div>
   `;
-
-  container.appendChild(card);
 }
 
 function turnIcon(step) {
@@ -224,7 +282,7 @@ function turnIcon(step) {
   return "⬆️";
 }
 
-/** ============================
+/* ============================
  * ENTRY POINT
  * ============================ */
 
