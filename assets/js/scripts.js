@@ -20,6 +20,9 @@ let routeCoords = [];
 let navSteps = [];
 let currentStepIndex = 0;
 let watchId = null;
+let rerouting = false;
+let lastRerouteTime = 0;
+
 
 /* ============================
  * MAP INIT
@@ -33,6 +36,8 @@ function initMap() {
     mapTypeId: "roadmap"
   });
 }
+
+let userAdvancedMarker;
 
 /* ============================
  * INPUT → COORDINATES
@@ -78,7 +83,6 @@ async function routeWithORS(source, dest) {
     instructions: true,
     preference: "fastest",
     options: {
-      traffic: true,
       avoid_features: ["ferries"]
     }
   };
@@ -153,38 +157,41 @@ function drawRoute(coords) {
 function startGPS() {
   watchId = navigator.geolocation.watchPosition(
     pos => {
-      const here = {
-        lat: pos.coords.latitude,
-        lng: pos.coords.longitude
-      };
+        const here = {
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude
+        };
 
-      if (!userMarker) {
-        userMarker = new google.maps.Marker({
-          position: here,
-          map,
-          zIndex: 999,
-          icon: {
-            path: google.maps.SymbolPath.CIRCLE,
-            scale: 8,
-            fillColor: "#1a73e8",
-            fillOpacity: 1,
-            strokeColor: "#ffffff",
-            strokeWeight: 3
-          }
-        });
+        if (!userAdvancedMarker) {
+            const el = document.createElement("div");
+            el.style.width = "16px";
+            el.style.height = "16px";
+            el.style.borderRadius = "50%";
+            el.style.background = "#1a73e8";
+            el.style.border = "3px solid white";
+            el.style.boxShadow = "0 0 8px rgba(26,115,232,.6)";
+
+            userAdvancedMarker = new google.maps.marker.AdvancedMarkerElement({
+                position: here,
+                map,
+                content: el
+            });
+        } else {
+            userAdvancedMarker.position = here;
+        }
 
         accuracyCircle = new google.maps.Circle({
-          map,
-          center: here,
-          radius: pos.coords.accuracy,
-          fillColor: "#1a73e8",
-          fillOpacity: 0.15,
-          strokeOpacity: 0
+            map,
+            center: here,
+            radius: pos.coords.accuracy,
+            fillColor: "#1a73e8",
+            fillOpacity: 0.15,
+            strokeOpacity: 0
         });
       } else {
-        userMarker.setPosition(here);
-        accuracyCircle.setCenter(here);
-        accuracyCircle.setRadius(pos.coords.accuracy);
+            userAdvanceMarker.setPosition(here);
+            accuracyCircle.setCenter(here);
+            accuracyCircle.setRadius(pos.coords.accuracy);
       }
 
       map.setOptions({
@@ -229,6 +236,11 @@ function checkStepProgress(position) {
  * ============================ */
 
 async function checkOffRoute(position) {
+  if (rerouting) return;
+
+  const now = Date.now();
+  if (now - lastRerouteTime < 15000) return; // 15s cooldown
+
   const nearest = routeCoords.reduce((min, p) => {
     const d = google.maps.geometry.spherical.computeDistanceBetween(
       new google.maps.LatLng(position.lat, position.lng),
@@ -238,11 +250,21 @@ async function checkOffRoute(position) {
   }, Infinity);
 
   if (nearest > REROUTE_THRESHOLD_METERS) {
-    const dest = routeCoords[routeCoords.length - 1];
-    const geojson = await routeWithORS(position, dest);
-    startNavigation(geojson);
+    rerouting = true;
+    lastRerouteTime = now;
+
+    try {
+      const dest = routeCoords[routeCoords.length - 1];
+      const geojson = await routeWithORS(position, dest);
+      startNavigation(geojson);
+    } catch (e) {
+      console.warn("[NAV] Reroute failed", e);
+    } finally {
+      rerouting = false;
+    }
   }
 }
+
 
 /* ============================
  * INSTRUCTION UI
