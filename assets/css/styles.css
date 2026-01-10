@@ -66,6 +66,10 @@ body {
     border-radius: 50px;
 }
 
+.autocomplete-wrapper {
+    height: 32px;
+}
+
 #computeRoute {
     background-color: var(--accent-color);
     color: var(--primary-color);

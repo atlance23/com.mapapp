@@ -14,14 +14,19 @@
         <section>
             <div id="controls">
                 <h4>Enter Trip Details</h4>
-                <gmp-place-autocomplete
-                    id="source-address"
-                    placeholder="Start location">
-                </gmp-place-autocomplete>
-                <gmp-place-autocomplete
-                    id="destination-address"
-                    placeholder="Destination">
-                </gmp-place-autocomplete>
+                <div class="autocomplete-wrapper">
+                    <gmp-place-autocomplete
+                        id="source-address"
+                        placeholder="Start location">
+                    </gmp-place-autocomplete>
+                </div>
+                
+                <div class="autocomplete-wrapper">
+                    <gmp-place-autocomplete
+                        id="destination-address"
+                        placeholder="Destination">
+                    </gmp-place-autocomplete>
+                </div>
 
                 <button id="computeRoute" onclick="findPath()">Start Route</button>
             </div>
