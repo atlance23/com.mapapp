@@ -43,7 +43,7 @@ function initMap() {
 }
 
 /**
- * Tile helpers
+ * Helpers
  */
 
 function tileId(lat, lng) {
@@ -59,9 +59,28 @@ function tileBBox(x, y) {
     };
 }
 
-/**
- * Cache helpers
- */
+function latLngToTile(lat, lng, z = 12) {
+    const n = 2 ** z;
+    const x = Math.floor((lng + 180) / 360 * n);
+    const y = Math.floor(
+        (1 - Math.log(Math.tan(lat * Math.PI / 180) +
+        1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * n
+    );
+    return [x, y];
+}
+
+function tilesAlongRoute(a, b, z = 12) {
+    const [x1, y1] = latLngToTile(a.lat, a.lng, z);
+    const [x2, y2] = latLngToTile(b.lat, b.lng, z);
+
+    const tiles = [];
+    for (let x = Math.min(x1, x2); x <= Math.max(x1, x2); x++) {
+        for (let y = Math.min(y1, y2); y <= Math.max(y1, y2); y++) {
+            tiles.push([x, y]);
+        }
+    }
+    return tiles;
+}
 
 function loadCachedTile(id) {
     if (tileCache.has(id)) return tileCache.get(id);
@@ -81,36 +100,42 @@ function cacheTile(id, data) {
  * Fetch one tile
  */
 
-async function fetchTile(x, y) {
-    const id = `${x}:${y}`;
-    const cached = loadCachedTile(id);
-    if (cached) return cached;
+async function fetchTile(x, y, z = 12) {
+    const n = 2 ** z;
 
-    const bbox = tileBBox(x, y);
+    const lon1 = x / n * 360 - 180;
+    const lon2 = (x + 1) / n * 360 - 180;
+
+    const lat1 = Math.atan(Math.sinh(Math.PI * (1 - 2 * y / n))) * 180 / Math.PI;
+    const lat2 = Math.atan(Math.sinh(Math.PI * (1 - 2 * (y + 1) / n))) * 180 / Math.PI;
 
     const query = `
         [out:json][timeout:25];
         way["highway"]
-          (${bbox.south},${bbox.west},${bbox.north},${bbox.east});
+          (${lat2},${lon1},${lat1},${lon2});
         (._;>;);
         out body;
     `;
 
-    const res = await fetch(
-        "https://overpass-api.de/api/interpreter",
-        {
-            method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: "data=" + encodeURIComponent(query)
-        }
-    );
+    const res = await fetch("https://overpass-api.de/api/interpreter", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "data=" + encodeURIComponent(query)
+    });
 
-    if (!res.ok) throw new Error("Tile fetch failed");
+    if (!res.ok) {
+        throw new Error(`Overpass HTTP ${res.status}`);
+    }
 
     const data = await res.json();
-    cacheTile(id, data);
+
+    if (!data.elements || !data.elements.length) {
+        throw new Error("Empty tile");
+    }
+
     return data;
 }
+
 
 /**
  * Merge tile into global graph
@@ -126,7 +151,11 @@ function mergeTile(data) {
     data.elements.forEach(el => {
         if (el.type === "way" && el.nodes && el.tags?.highway) {
             const weight = ROAD_WEIGHTS[el.tags.highway] ?? 1.3;
-            const oneway = ["yes", "true", "1"].includes(el.tags.oneway);
+
+            const oneway =
+                el.tags.oneway === "yes" ||
+                el.tags.oneway === "true" ||
+                el.tags.oneway === "1";
 
             for (let i = 0; i < el.nodes.length - 1; i++) {
                 const a = el.nodes[i];
@@ -143,6 +172,55 @@ function mergeTile(data) {
         }
     });
 }
+
+/**
+ * Parallel Tile Loader 
+ */
+
+async function ensureTilesLoaded(source, dest) {
+    const tiles = tilesAlongRoute(source, dest);
+    const total = tiles.length;
+    let completed = 0;
+
+    const progress = document.getElementById("progress");
+    const progressText = document.getElementById("progressText");
+    progress.style.display = "block";
+
+    const CONCURRENCY = 3;
+    const queue = [...tiles];
+    const workers = [];
+
+    async function worker() {
+        while (queue.length) {
+            const [x, y] = queue.shift();
+            try {
+                const data = await fetchTile(x, y);
+                mergeTile(data);
+            } catch (e) {
+                console.warn(`Tile ${x}:${y} skipped`, e.message);
+            }
+
+            completed++;
+            progressText.textContent =
+                Math.round((completed / total) * 100) + "%";
+
+            await new Promise(r => setTimeout(r, 250));
+        }
+    }
+
+    for (let i = 0; i < CONCURRENCY; i++) {
+        workers.push(worker());
+    }
+
+    await Promise.all(workers);
+
+    progress.style.display = "none";
+
+    if (Object.keys(globalGraph).length === 0) {
+        throw new Error("No road data loaded");
+    }
+}
+
 
 /**
  * Corridor tiles
@@ -167,11 +245,25 @@ function tilesAlongRoute(a, b) {
 
 async function ensureTilesLoaded(source, dest) {
     const tiles = tilesAlongRoute(source, dest);
+
     for (const [x, y] of tiles) {
-        const data = await fetchTile(x, y);
-        mergeTile(data);
+        try {
+            const data = await fetchTile(x, y);
+            mergeTile(data);
+        } catch (e) {
+            console.warn(`Tile ${x}:${y} failed, skipping`, e.message);
+            // DO NOT throw — continue
+        }
+
+        // small delay to avoid Overpass throttling
+        await new Promise(r => setTimeout(r, 350));
+    }
+
+    if (Object.keys(globalGraph).length === 0) {
+        throw new Error("No road data loaded");
     }
 }
+
 
 /**
  * Snap to road
@@ -297,17 +389,19 @@ async function findPath() {
     const dest = { lat: +d[0], lng: +d[1] };
 
     try {
+        globalGraph = {};
+        globalNodeCoords = {};
+
         await ensureTilesLoaded(source, dest);
 
-        const start = snapToRoad(source.lat, source.lng);
-        const end = snapToRoad(dest.lat, dest.lng);
+        const start = snapToRoad(source.lat, source.lng, globalNodeCoords, globalGraph);
+        const end = snapToRoad(dest.lat, dest.lng, globalNodeCoords, globalGraph);
 
         if (!start || !end) {
-            alert("No nearby roads found");
-            return;
+            throw new Error("Unable to snap to road network");
         }
 
-        const path = aStar(start, end);
+        const path = aStar(globalGraph, globalNodeCoords, start, end);
         visualizeRoute(path);
     } catch (e) {
         alert("Routing service busy. Try again.");
