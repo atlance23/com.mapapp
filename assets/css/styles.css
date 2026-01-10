@@ -55,9 +55,6 @@ body {
     max-height: 32px;
 }
 
-[id$="address"] > #shadow-root > div.widget-container > div.input-container {
+.input-container, .input-container div.autocomplete-icon {
     max-height: 32px !important;
-    display: flex !important;
-    justify-content: center !important;
-    align-items: center !important;
 }
