@@ -1,24 +1,19 @@
 /**
- * Constants
+ * ============================
+ * GLOBAL CONFIG
+ * ============================
  */
 
 const centerCoordinates = { lat: 38.6251, lng: -90.1868 };
 let map;
 
-/**
- * Tile system
- */
-
-const TILE_SIZE = 0.25;
-const tileCache = new Map();
-
-const globalGraph = {};
-const globalNodeCoords = {};
+const TILE_ZOOM = 12;          // Good for MO + IL
+const TILE_CONCURRENCY = 3;    // Overpass-safe
+const TILE_DELAY_MS = 250;
 
 /**
  * Road weights
  */
-
 const ROAD_WEIGHTS = {
     motorway: 0.6,
     trunk: 0.7,
@@ -31,7 +26,15 @@ const ROAD_WEIGHTS = {
 };
 
 /**
- * Initialize Google Map
+ * Global routing graph
+ */
+let globalGraph = {};
+let globalNodeCoords = {};
+
+/**
+ * ============================
+ * MAP INIT
+ * ============================
  */
 
 function initMap() {
@@ -43,23 +46,12 @@ function initMap() {
 }
 
 /**
- * Helpers
+ * ============================
+ * TILE MATH (XYZ)
+ * ============================
  */
 
-function tileId(lat, lng) {
-    return `${Math.floor(lng / TILE_SIZE)}:${Math.floor(lat / TILE_SIZE)}`;
-}
-
-function tileBBox(x, y) {
-    return {
-        west: x * TILE_SIZE,
-        east: (x + 1) * TILE_SIZE,
-        south: y * TILE_SIZE,
-        north: (y + 1) * TILE_SIZE
-    };
-}
-
-function latLngToTile(lat, lng, z = 12) {
+function latLngToTile(lat, lng, z = TILE_ZOOM) {
     const n = 2 ** z;
     const x = Math.floor((lng + 180) / 360 * n);
     const y = Math.floor(
@@ -69,7 +61,7 @@ function latLngToTile(lat, lng, z = 12) {
     return [x, y];
 }
 
-function tilesAlongRoute(a, b, z = 12) {
+function tilesAlongRoute(a, b, z = TILE_ZOOM) {
     const [x1, y1] = latLngToTile(a.lat, a.lng, z);
     const [x2, y2] = latLngToTile(b.lat, b.lng, z);
 
@@ -82,40 +74,53 @@ function tilesAlongRoute(a, b, z = 12) {
     return tiles;
 }
 
-function loadCachedTile(id) {
-    if (tileCache.has(id)) return tileCache.get(id);
-    const raw = localStorage.getItem("tile_" + id);
-    if (!raw) return null;
-    const data = JSON.parse(raw);
-    tileCache.set(id, data);
-    return data;
+/**
+ * ============================
+ * TILE CACHE
+ * ============================
+ */
+
+function tileKey(x, y, z) {
+    return `tile_${z}_${x}_${y}`;
 }
 
-function cacheTile(id, data) {
-    tileCache.set(id, data);
-    localStorage.setItem("tile_" + id, JSON.stringify(data));
+function loadCachedTile(x, y, z) {
+    const raw = localStorage.getItem(tileKey(x, y, z));
+    return raw ? JSON.parse(raw) : null;
+}
+
+function saveCachedTile(x, y, z, data) {
+    localStorage.setItem(tileKey(x, y, z), JSON.stringify(data));
 }
 
 /**
- * Fetch one tile
+ * ============================
+ * FETCH TILE (OVERPASS)
+ * ============================
  */
 
-async function fetchTile(x, y, z = 12) {
+async function fetchTile(x, y, z = TILE_ZOOM) {
+    const cached = loadCachedTile(x, y, z);
+    if (cached) {
+        console.debug(`Tile ${x}:${y} loaded from cache`);
+        return cached;
+    }
+
     const n = 2 ** z;
 
     const lon1 = x / n * 360 - 180;
     const lon2 = (x + 1) / n * 360 - 180;
-
     const lat1 = Math.atan(Math.sinh(Math.PI * (1 - 2 * y / n))) * 180 / Math.PI;
     const lat2 = Math.atan(Math.sinh(Math.PI * (1 - 2 * (y + 1) / n))) * 180 / Math.PI;
 
     const query = `
         [out:json][timeout:25];
-        way["highway"]
-          (${lat2},${lon1},${lat1},${lon2});
+        way["highway"](${lat2},${lon1},${lat1},${lon2});
         (._;>;);
         out body;
     `;
+
+    console.debug(`Fetching tile ${x}:${y}`);
 
     const res = await fetch("https://overpass-api.de/api/interpreter", {
         method: "POST",
@@ -133,29 +138,27 @@ async function fetchTile(x, y, z = 12) {
         throw new Error("Empty tile");
     }
 
+    saveCachedTile(x, y, z, data);
     return data;
 }
 
-
 /**
- * Merge tile into global graph
+ * ============================
+ * MERGE TILE INTO GRAPH
+ * ============================
  */
 
 function mergeTile(data) {
-    data.elements.forEach(el => {
+    for (const el of data.elements) {
         if (el.type === "node") {
             globalNodeCoords[el.id] = { lat: el.lat, lng: el.lon };
         }
-    });
+    }
 
-    data.elements.forEach(el => {
+    for (const el of data.elements) {
         if (el.type === "way" && el.nodes && el.tags?.highway) {
             const weight = ROAD_WEIGHTS[el.tags.highway] ?? 1.3;
-
-            const oneway =
-                el.tags.oneway === "yes" ||
-                el.tags.oneway === "true" ||
-                el.tags.oneway === "1";
+            const oneway = ["yes", "true", "1"].includes(el.tags.oneway);
 
             for (let i = 0; i < el.nodes.length - 1; i++) {
                 const a = el.nodes[i];
@@ -170,23 +173,20 @@ function mergeTile(data) {
                 if (!oneway) globalGraph[b][a] = weight;
             }
         }
-    });
+    }
 }
 
 /**
- * Parallel Tile Loader 
+ * ============================
+ * PARALLEL TILE LOADER
+ * ============================
  */
 
 async function ensureTilesLoaded(source, dest) {
     const tiles = tilesAlongRoute(source, dest);
-    const total = tiles.length;
+    console.info(`Loading ${tiles.length} tiles`);
+
     let completed = 0;
-
-    const progress = document.getElementById("progress");
-    const progressText = document.getElementById("progressText");
-    progress.style.display = "block";
-
-    const CONCURRENCY = 3;
     const queue = [...tiles];
     const workers = [];
 
@@ -199,74 +199,27 @@ async function ensureTilesLoaded(source, dest) {
             } catch (e) {
                 console.warn(`Tile ${x}:${y} skipped`, e.message);
             }
-
             completed++;
-            progressText.textContent =
-                Math.round((completed / total) * 100) + "%";
-
-            await new Promise(r => setTimeout(r, 250));
+            console.debug(`Tile progress: ${completed}/${tiles.length}`);
+            await new Promise(r => setTimeout(r, TILE_DELAY_MS));
         }
     }
 
-    for (let i = 0; i < CONCURRENCY; i++) {
+    for (let i = 0; i < TILE_CONCURRENCY; i++) {
         workers.push(worker());
     }
 
     await Promise.all(workers);
 
-    progress.style.display = "none";
-
-    if (Object.keys(globalGraph).length === 0) {
+    if (!Object.keys(globalGraph).length) {
         throw new Error("No road data loaded");
     }
 }
 
-
 /**
- * Corridor tiles
- */
-
-function tilesAlongRoute(a, b) {
-    const tiles = new Set();
-    const steps = 60;
-
-    for (let i = 0; i <= steps; i++) {
-        const lat = a.lat + (b.lat - a.lat) * (i / steps);
-        const lng = a.lng + (b.lng - a.lng) * (i / steps);
-        tiles.add(tileId(lat, lng));
-    }
-
-    return [...tiles].map(id => id.split(":").map(Number));
-}
-
-/**
- * Ensure tiles loaded
- */
-
-async function ensureTilesLoaded(source, dest) {
-    const tiles = tilesAlongRoute(source, dest);
-
-    for (const [x, y] of tiles) {
-        try {
-            const data = await fetchTile(x, y);
-            mergeTile(data);
-        } catch (e) {
-            console.warn(`Tile ${x}:${y} failed, skipping`, e.message);
-            // DO NOT throw — continue
-        }
-
-        // small delay to avoid Overpass throttling
-        await new Promise(r => setTimeout(r, 350));
-    }
-
-    if (Object.keys(globalGraph).length === 0) {
-        throw new Error("No road data loaded");
-    }
-}
-
-
-/**
- * Snap to road
+ * ============================
+ * ROUTING CORE
+ * ============================
  */
 
 function snapToRoad(lat, lng) {
@@ -283,13 +236,8 @@ function snapToRoad(lat, lng) {
             best = id;
         }
     }
-
     return best;
 }
-
-/**
- * Haversine
- */
 
 function haversine(a, b) {
     const R = 6371000;
@@ -304,10 +252,6 @@ function haversine(a, b) {
         Math.sin(dLng / 2) ** 2
     ));
 }
-
-/**
- * A*
- */
 
 function aStar(start, goal) {
     const open = new Set([start]);
@@ -326,7 +270,7 @@ function aStar(start, goal) {
     while (open.size) {
         let current = null;
         for (const v of open) {
-            if (current === null || f[v] < f[current]) current = v;
+            if (!current || f[v] < f[current]) current = v;
         }
 
         if (current === goal) {
@@ -349,24 +293,27 @@ function aStar(start, goal) {
             if (tentative < g[n]) {
                 came[n] = current;
                 g[n] = tentative;
-                f[n] = tentative + haversine(globalNodeCoords[n], globalNodeCoords[goal]);
+                f[n] = tentative +
+                    haversine(globalNodeCoords[n], globalNodeCoords[goal]);
                 open.add(n);
             }
         }
     }
-
     return null;
 }
 
 /**
- * Visualization
+ * ============================
+ * VISUALIZATION
+ * ============================
  */
 
 function visualizeRoute(path) {
     if (!path || path.length < 2) return;
 
     const coords = path.map(id => globalNodeCoords[id]).filter(Boolean);
-    const polyline = new google.maps.Polyline({
+
+    const poly = new google.maps.Polyline({
         path: coords,
         map,
         strokeWeight: 5
@@ -378,32 +325,37 @@ function visualizeRoute(path) {
 }
 
 /**
- * Main
+ * ============================
+ * ENTRY POINT
+ * ============================
  */
 
 async function findPath() {
-    const s = document.getElementById("source").value.split(",");
-    const d = document.getElementById("destination").value.split(",");
-
-    const source = { lat: +s[0], lng: +s[1] };
-    const dest = { lat: +d[0], lng: +d[1] };
-
     try {
         globalGraph = {};
         globalNodeCoords = {};
 
+        const s = document.getElementById("source").value.split(",");
+        const d = document.getElementById("destination").value.split(",");
+
+        const source = { lat: +s[0], lng: +s[1] };
+        const dest = { lat: +d[0], lng: +d[1] };
+
         await ensureTilesLoaded(source, dest);
 
-        const start = snapToRoad(source.lat, source.lng, globalNodeCoords, globalGraph);
-        const end = snapToRoad(dest.lat, dest.lng, globalNodeCoords, globalGraph);
+        const start = snapToRoad(source.lat, source.lng);
+        const end = snapToRoad(dest.lat, dest.lng);
 
         if (!start || !end) {
             throw new Error("Unable to snap to road network");
         }
 
-        const path = aStar(globalGraph, globalNodeCoords, start, end);
+        const path = aStar(start, end);
         visualizeRoute(path);
+
+        console.info("Routing complete");
     } catch (e) {
-        alert("Routing service busy. Try again.");
+        console.error("Routing failed:", e);
+        alert(e.message);
     }
 }
