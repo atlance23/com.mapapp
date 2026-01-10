@@ -320,27 +320,23 @@ function turnIcon(step) {
  * PWA DEFERRED PROMPT
  * ============================ */
 
-let deferredPrompt;
+let deferredPrompt = null;
 
 window.addEventListener("beforeinstallprompt", e => {
     e.preventDefault();
     deferredPrompt = e;
-
-    const btn = document.createElement("button");
-    btn.textContent = "Install App";
-    btn.style.position = "fixed";
-    btn.style.bottom = "16px";
-    btn.style.right = "16px";
-    btn.style.zIndex = 9999;
-
-    btn.onclick = async () => {
-        deferredPrompt.prompt();
-        await deferredPrompt.userChoice;
-        btn.remove();
-    };
-
-    document.body.appendChild(btn);
+    document.getElementById("install-btn").style.display = "block";
 });
+
+async function installApp() {
+    if (!deferredPrompt) return;
+
+    deferredPrompt.prompt();
+    const choice = await deferredPrompt.userChoice;
+    deferredPrompt = null;
+
+    document.getElementById("install-btn").style.display = "none";
+}
 
 
 /* ============================
