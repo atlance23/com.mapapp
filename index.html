@@ -43,16 +43,10 @@
             <div id="controls">
                 <h4>Enter Trip Details</h4>
                 <label for="source">Start:</label>
-                <gmp-place-autocomplete
-                    id="source"
-                    placeholder="Start location">
-                </gmp-place-autocomplete>
+                <div id="source-container"></div>
                 <label for="destination">Destination:</label>
-                <gmp-place-autocomplete
-                    id="destination"
-                    placeholder="Destination">
-                </gmp-place-autocomplete>
-                <button onclick="findPath()">Find Shortest Path</button>
+                <div id="destination-container"></div>
+                <button onclick="findPath()">Route</button>
             </div>
             <div id="instructions" style="max-height:300px;overflow:auto;"></div>
             <div id="map"></div>
