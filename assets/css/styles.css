@@ -24,6 +24,8 @@ body {
     font-family: Montserrat;
     font-weight: 400;
     font-size: 1rem;
+    margin: 0;
+    padding: 0;
 }
 
 #map {
