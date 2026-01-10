@@ -22,6 +22,7 @@
           display: flex;
           align-items: center;
           min-height: 32px !important; /* Ensure min-height doesn't block reduction */
+          margin: 8px !important;
         }
           
         input {
