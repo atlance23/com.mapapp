@@ -1,37 +1,31 @@
 /**
  * =========================================================
  * GOOGLE MAPS + OPENROUTESERVICE ROUTING (MO + IL)
- * Clean, minimal, quota-safe
+ * Fully corrected, single-file, browser-safe version
  * =========================================================
  */
 
-/**
- * ============================
+/*************************
  * GLOBAL CONFIG
- * ============================
- */
+ *************************/
 
 const ORS_API_KEY = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjA0YjU2NDRlNDA5ZDQyMDE5ZTMxNjYyMDdlOTEwZDkyIiwiaCI6Im11cm11cjY0In0=";
 
 const CENTER_COORDINATES = { lat: 38.6251, lng: -90.1868 };
 const MAX_ROUTE_KM = 5500;
 const ROUTE_CACHE_PREFIX = "ors_route_";
-const DISABLE_ORS_NEAREST = true;
+const DISABLE_ORS_NEAREST = true; // must stay true in browser (CORS)
 
 let map;
+let routePolylines = [];
 
-/**
- * ============================
- * MAP INIT + PLACES CHECK
- * ============================
- */
+/*************************
+ * MAP INIT
+ *************************/
 
 function initMap() {
     if (!google.maps.places) {
-        throw new Error(
-            "Google Places library not loaded. " +
-            "Add &libraries=places to the Maps JS script tag."
-        );
+        throw new Error("Google Places library missing (?libraries=places)");
     }
 
     map = new google.maps.Map(document.getElementById("map"), {
@@ -41,30 +35,32 @@ function initMap() {
     });
 }
 
-/**
- * ============================
- * PLACE → COORDINATES (NEW API)
- * ============================
- */
+/*************************
+ * PLACE → COORDINATES
+ *************************/
 
 async function getPlaceCoordinates(el) {
-    // Case 1: New Places API (PlaceAutocompleteElement-style)
-    if (el.value && typeof el.value === "object" && el.value.location) {
+    if (!el || !el.value) {
+        throw new Error("Please select a valid address from autocomplete");
+    }
+
+    // New Places API selection
+    if (typeof el.value === "object" && el.value.location) {
         return {
             lat: el.value.location.lat,
             lng: el.value.location.lng
         };
     }
 
-    const raw = el.value.trim();
+    const raw = String(el.value).trim();
 
-    // Case 2: User typed "lat,lng"
+    // lat,lng manual entry
     if (/^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/.test(raw)) {
         const [lat, lng] = raw.split(",").map(Number);
         return { lat, lng };
     }
 
-    // Case 3: Fallback to geocoding typed address
+    // Fallback geocoder
     const geocoder = new google.maps.Geocoder();
 
     return new Promise((resolve, reject) => {
@@ -73,22 +69,15 @@ async function getPlaceCoordinates(el) {
                 reject(new Error("Unable to resolve address"));
                 return;
             }
-
             const loc = results[0].geometry.location;
-            resolve({
-                lat: loc.lat(),
-                lng: loc.lng()
-            });
+            resolve({ lat: loc.lat(), lng: loc.lng() });
         });
     });
 }
 
-
-/**
- * ============================
+/*************************
  * DISTANCE HELPER
- * ============================
- */
+ *************************/
 
 function haversine(a, b) {
     const R = 6371000;
@@ -104,11 +93,9 @@ function haversine(a, b) {
     ));
 }
 
-/**
- * ============================
- * ROUTE CACHE (LOCALSTORAGE)
- * ============================
- */
+/*************************
+ * ROUTE CACHE
+ *************************/
 
 function routeCacheKey(a, b) {
     return `${ROUTE_CACHE_PREFIX}${a.lat},${a.lng}_${b.lat},${b.lng}`;
@@ -122,8 +109,7 @@ function loadCachedRoute(a, b) {
 function saveCachedRoute(a, b, data) {
     try {
         localStorage.setItem(routeCacheKey(a, b), JSON.stringify(data));
-    } catch (e) {
-        console.warn("[CACHE] Storage full, clearing ORS cache");
+    } catch {
         clearORSCache();
     }
 }
@@ -134,38 +120,32 @@ function clearORSCache() {
         .forEach(k => localStorage.removeItem(k));
 }
 
-/**
- * ============================
+/*************************
  * OPENROUTESERVICE ROUTING
- * ============================
- */
+ *************************/
+
+function withSnapRadius(coords, meters = 1500) {
+    return { coordinates: coords, radiuses: coords.map(() => meters) };
+}
 
 async function routeWithORS(source, dest) {
     const cached = loadCachedRoute(source, dest);
-    if (cached) {
-        console.info("[ORS] Loaded route from cache");
-        return cached;
-    }
+    if (cached) return cached;
 
     const distanceKm = haversine(source, dest) / 1000;
     if (distanceKm > MAX_ROUTE_KM) {
-        throw new Error("Route distance exceeds OpenRouteService free tier limits");
+        throw new Error("Route exceeds ORS free tier limits");
     }
 
     const body = {
-        ...withSnapRadius(
-            [
-                [source.lng, source.lat],
-                [dest.lng, dest.lat]
-            ],
-            1500 // snap radius in meters
-        ),
+        ...withSnapRadius([
+            [source.lng, source.lat],
+            [dest.lng, dest.lat]
+        ]),
         instructions: true,
         geometry: true,
         preference: "fastest",
-        options: {
-            avoid_features: ["ferries"]
-        }
+        options: { avoid_features: ["ferries"] }
     };
 
     const res = await fetch(
@@ -181,165 +161,50 @@ async function routeWithORS(source, dest) {
     );
 
     if (!res.ok) {
-        const txt = await res.text();
-        throw new Error(`[ORS] ${res.status}: ${txt}`);
+        throw new Error(`[ORS] ${res.status}: ${await res.text()}`);
     }
 
     const data = await res.json();
     saveCachedRoute(source, dest, data);
-
     return data;
 }
 
-/**
- * ============================
- * VISUALIZATION (TRAFFIC COLORS)
- * ============================
- */
+async function routeWithORSSnapping(source, dest) {
+    // snapping intentionally disabled in browser
+    return routeWithORS(source, dest);
+}
+
+/*************************
+ * MAP VISUALIZATION
+ *************************/
 
 function visualizeORSRoute(geojson) {
-    const feature = geojson.features[0];
-    const coords = feature.geometry.coordinates;
-    const steps = feature.properties.segments[0].steps;
+    routePolylines.forEach(p => p.setMap(null));
+    routePolylines = [];
 
-    for (const step of steps) {
-        const speed = step.distance / Math.max(step.duration, 1);
+    const coords = geojson.features[0].geometry.coordinates;
 
-        let color = "#2ecc71"; // fast
-        if (speed < 8) color = "#e67e22"; // moderate
-        if (speed < 4) color = "#e74c3c"; // slow
+    const polyline = new google.maps.Polyline({
+        path: coords.map(([lng, lat]) => ({ lat, lng })),
+        strokeColor: "#3498db",
+        strokeWeight: 5,
+        map
+    });
 
-        const segmentCoords = coords
-            .slice(step.way_points[0], step.way_points[1] + 1)
-            .map(([lng, lat]) => ({ lat, lng }));
-
-        new google.maps.Polyline({
-            path: segmentCoords,
-            map,
-            strokeColor: color,
-            strokeWeight: 5
-        });
-    }
+    routePolylines.push(polyline);
 
     const bounds = new google.maps.LatLngBounds();
     coords.forEach(([lng, lat]) => bounds.extend({ lat, lng }));
     map.fitBounds(bounds);
 }
 
-/**
- * ============================
- * TURN-BY-TURN INSTRUCTIONS
- * ============================
- */
-
-function printInstructions(geojson) {
-    const container = document.getElementById("instructions");
-    container.innerHTML = "";
-
-    const steps = geojson.features[0]
-        .properties
-        .segments[0]
-        .steps;
-
-    const list = document.createElement("ol");
-    list.style.paddingLeft = "20px";
-
-    steps.forEach(step => {
-        const item = document.createElement("li");
-        item.style.marginBottom = "8px";
-        item.textContent = `${step.instruction} (${step.distance.toFixed(0)} m)`;
-        list.appendChild(item);
-    });
-
-    container.appendChild(list);
-}
-
-
-/**
- * ============================
- * ORS NEAREST-ROAD SNAPPING
- * ============================
- */
-
-async function snapToRoad(coord) {
-    if (DISABLE_ORS_NEAREST) {
-        throw new Error("ORS nearest disabled (CORS)");
-    }
-
-    const url =
-        "https://api.openrouteservice.org/v2/directions/driving-car/geojson" +
-        `?coordinates=${point.lng},${point.lat}` +
-        "&number=1";
-
-    const res = await fetch(url, {
-        headers: {
-            "Authorization": ORS_API_KEY
-        }
-    });
-
-    if (!res.ok) {
-        throw new Error("[ORS] Failed to snap coordinate to road");
-    }
-
-    const data = await res.json();
-
-    if (!data.features || !data.features[0]) {
-        throw new Error("[ORS] No routable road found near point");
-    }
-
-    const [lng, lat] = data.features[0].geometry.coordinates;
-    return { lat, lng };
-}
-
-/**
- * ============================
- * ROUTE WITH SNAPPING WRAPPER
- * ============================
- */
-
-async function routeWithORSSnapping(source, dest) {
-    
-    if (DISABLE_ORS_NEAREST) {
-        return routeWithORS(source, dest);
-    }
-
-    let snappedSource = source;
-    let snappedDest = dest;
-
-    try {
-        snappedSource = await snapToRoad(source);
-        snappedDest = await snapToRoad(dest);
-        console.info("[ORS] Coordinates snapped to road");
-    } catch (err) {
-        console.warn("[ORS] Snapping failed, falling back to raw coordinates", err);
-    }
-
-    return routeWithORS(snappedSource, snappedDest);
-}
-
-/**
- * ============================
- * ADD SNAPPING HELPER
- * ============================
- */
-
-function withSnapRadius(coords, meters = 1000) {
-    return {
-        coordinates: coords,
-        radiuses: [meters, meters]
-    };
-}
-
-/**
- * ============================
- * UI TOGGLE HELPER
- * ============================
- */
+/*************************
+ * DIRECTIONS UI
+ *************************/
 
 function showDirectionsPanel() {
     const controls = document.getElementById("controls");
     const instructions = document.getElementById("instructions");
-
     if (controls) controls.style.display = "none";
     if (instructions) instructions.style.display = "block";
 }
@@ -349,32 +214,96 @@ function resetRouteUI() {
     const instructions = document.getElementById("instructions");
 
     if (controls) controls.style.display = "block";
-    if (instructions) instructions.style.display = "none";
-    if (instructions) instructions.innerHTML = "";
+    if (instructions) {
+        instructions.style.display = "none";
+        instructions.innerHTML = "";
+    }
 }
 
-function addBackButton() {
+function turnIcon(step) {
+    const t = step.instruction.toLowerCase();
+    if (t.includes("left")) return "⬅️";
+    if (t.includes("right")) return "➡️";
+    if (t.includes("merge")) return "↗️";
+    if (t.includes("exit")) return "⤴️";
+    if (t.includes("roundabout")) return "⭕";
+    return "⬆️";
+}
+
+function highwayShield(text) {
+    const match = text.match(/(I-|US-|MO-|IL-)?\s?\d+/);
+    if (!match) return null;
+
+    const span = document.createElement("span");
+    span.textContent = match[0];
+    span.style.cssText = "padding:2px 6px;margin-right:6px;border-radius:6px;background:#2c3e50;color:white;font-size:.75rem";
+    return span;
+}
+
+function groupSteps(steps) {
+    const groups = [];
+    let current = null;
+
+    for (const step of steps) {
+        const road = step.name || "Continue";
+        if (!current || current.road !== road) {
+            current = { road, steps: [] };
+            groups.push(current);
+        }
+        current.steps.push(step);
+    }
+    return groups;
+}
+
+function renderDirections(geojson) {
     const container = document.getElementById("instructions");
+    container.innerHTML = "";
 
-    const btn = document.createElement("button");
-    btn.textContent = "Edit Route";
-    btn.style.marginBottom = "12px";
-    btn.onclick = resetRouteUI;
+    const segment = geojson.features[0].properties.segments[0];
 
-    container.prepend(btn);
+    container.innerHTML += `
+        <strong>Total Distance:</strong> ${(segment.distance / 1000).toFixed(1)} km<br>
+        <strong>Estimated Time:</strong> ${(segment.duration / 60).toFixed(0)} min
+        <hr>
+    `;
+
+    groupSteps(segment.steps).forEach(group => {
+        const details = document.createElement("details");
+        details.open = true;
+
+        const summary = document.createElement("summary");
+        const shield = highwayShield(group.road);
+        if (shield) summary.appendChild(shield);
+        summary.append(group.road);
+
+        details.appendChild(summary);
+
+        const list = document.createElement("ol");
+        list.style.paddingLeft = "20px";
+
+        group.steps.forEach(step => {
+            const li = document.createElement("li");
+            li.textContent = `${turnIcon(step)} ${step.instruction} (${step.distance.toFixed(0)} m)`;
+            list.appendChild(li);
+        });
+
+        details.appendChild(list);
+        container.appendChild(details);
+    });
+
+    const back = document.createElement("button");
+    back.textContent = "Edit Route";
+    back.style.marginTop = "12px";
+    back.onclick = resetRouteUI;
+    container.appendChild(back);
 }
 
-
-/**
- * ============================
+/*************************
  * ENTRY POINT
- * ============================
- */
+ *************************/
 
 async function findPath() {
     try {
-        console.info("[APP] Starting route");
-
         const sourceEl = document.getElementById("source-address");
         const destEl = document.getElementById("destination-address");
 
@@ -383,14 +312,12 @@ async function findPath() {
 
         const geojson = await routeWithORSSnapping(source, dest);
 
+        renderDirections(geojson);
         visualizeORSRoute(geojson);
-        printInstructions(geojson);
-        addBackButton();
         showDirectionsPanel();
 
-        console.info("[APP] Routing complete");
     } catch (err) {
-        console.error("[APP] Routing failed", err);
+        console.error(err);
         alert(err.message);
     }
 }
