@@ -58,6 +58,43 @@ function haversine(a, b) {
     ));
 }
 
+
+/**
+ * ============================
+ * ADDRESS → COORDINATES (GOOGLE GEOCODING)
+ * ============================
+ */
+
+async function geocodeAddress(input) {
+    // If already "lat,lng", return directly
+    if (/^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/.test(input)) {
+        const [lat, lng] = input.split(",").map(Number);
+        return { lat, lng };
+    }
+
+    console.info("[GEOCODE] Resolving address:", input);
+
+    const geocoder = new google.maps.Geocoder();
+
+    return new Promise((resolve, reject) => {
+        geocoder.geocode({ address: input }, (results, status) => {
+            if (status !== "OK" || !results[0]) {
+                reject(new Error("Unable to geocode address"));
+                return;
+            }
+
+            const loc = results[0].geometry.location;
+            const coords = {
+                lat: loc.lat(),
+                lng: loc.lng()
+            };
+
+            console.info("[GEOCODE] Resolved:", coords);
+            resolve(coords);
+        });
+    });
+}
+
 /**
  * ============================
  * OPENROUTESERVICE ROUTING
@@ -157,13 +194,13 @@ function printInstructions(geojson) {
 
 async function findPath() {
     try {
-        const s = document.getElementById("source").value.split(",");
-        const d = document.getElementById("destination").value.split(",");
-
-        const source = { lat: +s[0], lng: +s[1] };
-        const dest = { lat: +d[0], lng: +d[1] };
+        const sourceInput = document.getElementById("source").value.trim();
+        const destInput = document.getElementById("destination").value.trim();
 
         console.info("[APP] Starting route");
+
+        const source = await geocodeAddress(sourceInput);
+        const dest = await geocodeAddress(destInput);
 
         const geojson = await routeWithORS(source, dest);
 
