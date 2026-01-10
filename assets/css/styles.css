@@ -89,4 +89,5 @@ body {
     border: solid 1px var(--accent-color);
     min-height: 32px;
     min-width: 175px;
+    margin: 16px;
 }
