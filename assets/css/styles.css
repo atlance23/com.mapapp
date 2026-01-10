@@ -55,6 +55,6 @@ body {
     max-height: 32px;
 }
 
-.input-container, .input-container div.autocomplete-icon {
+gmp-place-autocomplete {
     max-height: 32px !important;
 }
