@@ -54,7 +54,3 @@ body {
     border-radius: 50px;
     max-height: 32px;
 }
-
-gmp-place-autocomplete > * {
-    max-height: 32px !important;
-}
