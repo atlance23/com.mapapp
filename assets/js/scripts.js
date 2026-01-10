@@ -229,6 +229,59 @@ function printInstructions(geojson) {
 
 /**
  * ============================
+ * ORS NEAREST-ROAD SNAPPING
+ * ============================
+ */
+
+async function snapToRoad(point) {
+    const url =
+        "https://api.openrouteservice.org/v2/nearest/driving-car" +
+        `?coordinates=${point.lng},${point.lat}` +
+        "&number=1";
+
+    const res = await fetch(url, {
+        headers: {
+            "Authorization": ORS_API_KEY
+        }
+    });
+
+    if (!res.ok) {
+        throw new Error("[ORS] Failed to snap coordinate to road");
+    }
+
+    const data = await res.json();
+
+    if (!data.features || !data.features[0]) {
+        throw new Error("[ORS] No routable road found near point");
+    }
+
+    const [lng, lat] = data.features[0].geometry.coordinates;
+    return { lat, lng };
+}
+
+/**
+ * ============================
+ * ROUTE WITH SNAPPING WRAPPER
+ * ============================
+ */
+
+async function routeWithORSSnapping(source, dest) {
+    let snappedSource = source;
+    let snappedDest = dest;
+
+    try {
+        snappedSource = await snapToRoad(source);
+        snappedDest = await snapToRoad(dest);
+        console.info("[ORS] Coordinates snapped to road");
+    } catch (err) {
+        console.warn("[ORS] Snapping failed, falling back to raw coordinates", err);
+    }
+
+    return routeWithORS(snappedSource, snappedDest);
+}
+
+/**
+ * ============================
  * ENTRY POINT
  * ============================
  */
@@ -243,7 +296,7 @@ async function findPath() {
         const source = await getPlaceCoordinates(sourceEl);
         const dest = await getPlaceCoordinates(destEl);
 
-        const geojson = await routeWithORS(source, dest);
+        const geojson = await routeWithORSSnapping(source, dest);
 
         visualizeORSRoute(geojson);
         printInstructions(geojson);
