@@ -55,6 +55,9 @@ body {
     max-height: 32px;
 }
 
-[id$="address"] > div > div.input-container {
-    max-height: 32px;
+[id$="address"] > * > div.widget-container > div.input-container {
+    max-height: 32px !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
 }
