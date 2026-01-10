@@ -141,10 +141,13 @@ async function routeWithORS(source, dest) {
     }
 
     const body = {
-        coordinates: [
-            [source.lng, source.lat],
-            [dest.lng, dest.lat]
-        ],
+        ...withSnapRadius(
+            [
+                [source.lng, source.lat],
+                [dest.lng, dest.lat]
+            ],
+            1500 // snap radius in meters
+        ),
         instructions: true,
         geometry: true,
         preference: "fastest",
@@ -278,6 +281,19 @@ async function routeWithORSSnapping(source, dest) {
     }
 
     return routeWithORS(snappedSource, snappedDest);
+}
+
+/**
+ * ============================
+ * ADD SNAPPING HELPER
+ * ============================
+ */
+
+function withSnapRadius(coords, meters = 1000) {
+    return {
+        coordinates: coords,
+        radiuses: [meters, meters]
+    };
 }
 
 /**
