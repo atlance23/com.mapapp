@@ -11,6 +11,9 @@ const ROUTE_CACHE_PREFIX = "ors_route_";
 const GPS_UPDATE_MS = 1000;
 const STEP_ARRIVAL_METERS = 25;
 const REROUTE_THRESHOLD_METERS = 80;
+const METERS_PER_MILE = 1609.344;
+const FEET_PER_MILE = 5280;
+
 
 let map;
 let userMarker;
@@ -127,6 +130,18 @@ function startNavigation(geojson) {
   startGPS();
   updateInstruction();
 }
+
+function formatDistance(meters) {
+    const miles = meters / METERS_PER_MILE;
+
+    if (miles >= 0.1) {
+        return `${miles.toFixed(1)} mi`;
+    }
+
+    const feet = meters * 3.28084;
+    return `${Math.round(feet)} ft`;
+}
+
 
 /* ============================
  * ROUTE DRAWING (GOOGLE MAPS STYLE)
@@ -287,7 +302,7 @@ function updateInstruction() {
       box-shadow:0 4px 12px rgba(0,0,0,.15)">
       <div style="font-size:32px">${turnIcon(step)}</div>
       <strong>${step.instruction}</strong><br>
-      <small>${step.distance.toFixed(0)} m</small>
+      <small>${formatDistance(step.distance)}</small>
     </div>
   `;
 }
