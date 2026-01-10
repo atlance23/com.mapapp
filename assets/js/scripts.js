@@ -15,6 +15,8 @@ const ROAD_WEIGHTS = {
     unclassified: 1.1
 };
 
+let cachedOSMData = null;
+
 /**
  * Initialize Google Map
  */
@@ -31,19 +33,45 @@ function initMap() {
  */
 async function fetchStreetData() {
     const query = `
-        [out:json];
-        way["highway"](around:1000, ${centerCoordinates.lat}, ${centerCoordinates.lng});
+        [out:json][timeout:25];
+        way["highway"]
+          (around:600, ${centerCoordinates.lat}, ${centerCoordinates.lng});
         (._;>;);
         out body;
     `;
 
-    const res = await fetch(
-        "https://overpass-api.de/api/interpreter?data=" +
-        encodeURIComponent(query)
+    const response = await fetch(
+        "https://overpass-api.de/api/interpreter",
+        {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/x-www-form-urlencoded"
+            },
+            body: "data=" + encodeURIComponent(query)
+        }
     );
 
-    return res.json();
+    if (!response.ok) {
+        throw new Error("Overpass error " + response.status);
+    }
+
+    return response.json();
 }
+
+/**
+ * Fetch Street Data with Retry
+ */
+async function fetchStreetDataWithRetry(retries = 3) {
+    for (let i = 0; i < retries; i++) {
+        try {
+            return await fetchStreetData();
+        } catch (e) {
+            if (i === retries - 1) throw e;
+            await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+        }
+    }
+}
+
 
 /**
  * Build graph
@@ -288,22 +316,30 @@ async function findPath() {
     const source = { lat: parseFloat(s[0]), lng: parseFloat(s[1]) };
     const dest = { lat: parseFloat(d[0]), lng: parseFloat(d[1]) };
 
-    const data = await fetchStreetData();
-    const { graph, nodeCoords } = buildGraph(data);
+    try {
 
-    const start = snapToRoad(source.lat, source.lng, nodeCoords, graph);
-    const end = snapToRoad(dest.lat, dest.lng, nodeCoords, graph);
+        const data = cachedOSMData ??
+        (cachedOSMData = await fetchStreetDataWithRetry());
 
-    if (!start || !end) {
-        alert("No nearby road nodes found");
+        const { graph, nodeCoords } = buildGraph(data);
+
+        const start = snapToRoad(source.lat, source.lng, nodeCoords, graph);
+        const end = snapToRoad(dest.lat, dest.lng, nodeCoords, graph);
+
+        if (!start || !end) {
+            alert("No nearby road nodes found");
+            return;
+        }
+
+        const path = aStar(graph, nodeCoords, start, end);
+        visualizeRoute(path, nodeCoords);
+
+        const instructions = buildInstructions(path, nodeCoords);
+        showInstructions(instructions);
+
+        visualizeRoute(path, nodeCoords);
+    } catch (e) {
+        alert("Routing service temporarily busy. Please try again.");
         return;
     }
-
-    const path = aStar(graph, nodeCoords, start, end);
-    visualizeRoute(path, nodeCoords);
-
-    const instructions = buildInstructions(path, nodeCoords);
-    showInstructions(instructions);
-
-    visualizeRoute(path, nodeCoords);
 }
