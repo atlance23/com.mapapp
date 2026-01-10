@@ -54,3 +54,7 @@ body {
     border-radius: 50px;
     max-height: 32px;
 }
+
+[id$="address"] > * > div > div.input-container {
+    max-height: 32px;
+}
