@@ -11,22 +11,18 @@
  * ============================
  */
 
-const ORS_API_KEY = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjA0YjU2NDRlNDA5ZDQyMDE5ZTMxNjYyMDdlOTEwZDkyIiwiaCI6Im11cm11cjY0In0="; // REQUIRED
+const ORS_API_KEY = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjA0YjU2NDRlNDA5ZDQyMDE5ZTMxNjYyMDdlOTEwZDkyIiwiaCI6Im11cm11cjY0In0=";
 
 const centerCoordinates = { lat: 38.6251, lng: -90.1868 };
 let map;
 
-// ORS free tier safety limit (~6000 km)
 const MAX_ROUTE_KM = 5500;
+const ROUTE_CACHE_PREFIX = "ors_route_";
 
 /**
  * ============================
- * MAP INIT
+ * MAP INIT + AUTOCOMPLETE
  * ============================
- * Load Google Maps JS with:
- * <script async defer
- *   src="https://maps.googleapis.com/maps/api/js?key=YOUR_KEY&callback=initMap">
- * </script>
  */
 
 function initMap() {
@@ -35,44 +31,44 @@ function initMap() {
         zoom: 7,
         mapTypeId: "roadmap"
     });
+
+    const sourceInput = document.getElementById("source");
+    const destInput = document.getElementById("destination");
+
+    new google.maps.places.Autocomplete(sourceInput, { fields: ["geometry", "formatted_address"] });
+    new google.maps.places.Autocomplete(destInput, { fields: ["geometry", "formatted_address"] });
 }
 
 /**
  * ============================
- * DISTANCE HELPER (VALIDATION ONLY)
+ * DISTANCE HELPER
  * ============================
  */
 
 function haversine(a, b) {
     const R = 6371000;
     const toRad = x => x * Math.PI / 180;
-
     const dLat = toRad(b.lat - a.lat);
     const dLng = toRad(b.lng - a.lng);
 
     return 2 * R * Math.asin(Math.sqrt(
         Math.sin(dLat / 2) ** 2 +
-        Math.cos(toRad(a.lat)) *
-        Math.cos(toRad(b.lat)) *
+        Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) *
         Math.sin(dLng / 2) ** 2
     ));
 }
 
-
 /**
  * ============================
- * ADDRESS → COORDINATES (GOOGLE GEOCODING)
+ * ADDRESS → COORDINATES
  * ============================
  */
 
 async function geocodeAddress(input) {
-    // If already "lat,lng", return directly
     if (/^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/.test(input)) {
         const [lat, lng] = input.split(",").map(Number);
         return { lat, lng };
     }
-
-    console.info("[GEOCODE] Resolving address:", input);
 
     const geocoder = new google.maps.Geocoder();
 
@@ -84,15 +80,28 @@ async function geocodeAddress(input) {
             }
 
             const loc = results[0].geometry.location;
-            const coords = {
-                lat: loc.lat(),
-                lng: loc.lng()
-            };
-
-            console.info("[GEOCODE] Resolved:", coords);
-            resolve(coords);
+            resolve({ lat: loc.lat(), lng: loc.lng() });
         });
     });
+}
+
+/**
+ * ============================
+ * ROUTE CACHE
+ * ============================
+ */
+
+function routeCacheKey(a, b) {
+    return ROUTE_CACHE_PREFIX + `${a.lat},${a.lng}_${b.lat},${b.lng}`;
+}
+
+function loadCachedRoute(a, b) {
+    const raw = localStorage.getItem(routeCacheKey(a, b));
+    return raw ? JSON.parse(raw) : null;
+}
+
+function saveCachedRoute(a, b, data) {
+    localStorage.setItem(routeCacheKey(a, b), JSON.stringify(data));
 }
 
 /**
@@ -102,39 +111,36 @@ async function geocodeAddress(input) {
  */
 
 async function routeWithORS(source, dest) {
-    console.info("[ORS] Requesting route");
-
-    console.debug("[DEBUG] Source:", source);
-    console.debug("[DEBUG] Destination:", dest);
+    const cached = loadCachedRoute(source, dest);
+    if (cached) {
+        console.info("[ORS] Loaded route from cache");
+        return cached;
+    }
 
     const distanceKm = haversine(source, dest) / 1000;
-    console.debug("[DEBUG] Straight-line distance (km):", distanceKm);
-
     if (distanceKm > MAX_ROUTE_KM) {
         throw new Error("Route distance exceeds OpenRouteService free tier limits.");
     }
 
     const body = {
-        coordinates: [
-            [source.lng, source.lat],
-            [dest.lng, dest.lat]
-        ],
+        coordinates: [[source.lng, source.lat], [dest.lng, dest.lat]],
         instructions: true,
         geometry: true,
-        preference: "fastest"
+        preference: "fastest",
+        options: {
+            avoid_features: ["ferries"],
+            avoid_polygons: null
+        }
     };
 
-    const res = await fetch(
-        "https://api.openrouteservice.org/v2/directions/driving-car/geojson",
-        {
-            method: "POST",
-            headers: {
-                "Authorization": ORS_API_KEY,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify(body)
-        }
-    );
+    const res = await fetch("https://api.openrouteservice.org/v2/directions/driving-car/geojson", {
+        method: "POST",
+        headers: {
+            "Authorization": ORS_API_KEY,
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(body)
+    });
 
     if (!res.ok) {
         const txt = await res.text();
@@ -142,47 +148,52 @@ async function routeWithORS(source, dest) {
     }
 
     const data = await res.json();
-    console.info("[ORS] Route received");
+    saveCachedRoute(source, dest, data);
     return data;
 }
 
 /**
  * ============================
- * VISUALIZATION
+ * VISUALIZATION (TRAFFIC COLORS)
  * ============================
  */
 
 function visualizeORSRoute(geojson) {
-    const coords = geojson.features[0].geometry.coordinates.map(
-        ([lng, lat]) => ({ lat, lng })
-    );
+    const coords = geojson.features[0].geometry.coordinates;
+    const steps = geojson.features[0].properties.segments[0].steps;
 
-    const poly = new google.maps.Polyline({
-        path: coords,
-        map,
-        strokeColor: "#000",
-        strokeWeight: 5
-    });
+    for (let i = 0; i < steps.length; i++) {
+        const speed = steps[i].distance / Math.max(steps[i].duration, 1);
+        let color = "#2ecc71"; // fast = green
+        if (speed < 8) color = "#e67e22"; // moderate = orange
+        if (speed < 4) color = "#e74c3c"; // slow = red
+
+        const segmentCoords = coords.slice(steps[i].way_points[0], steps[i].way_points[1] + 1)
+            .map(([lng, lat]) => ({ lat, lng }));
+
+        new google.maps.Polyline({
+            path: segmentCoords,
+            map,
+            strokeColor: color,
+            strokeWeight: 5
+        });
+    }
 
     const bounds = new google.maps.LatLngBounds();
-    coords.forEach(c => bounds.extend(c));
+    coords.forEach(([lng, lat]) => bounds.extend({ lat, lng }));
     map.fitBounds(bounds);
 }
 
 /**
  * ============================
- * TURN-BY-TURN INSTRUCTIONS
+ * TURN-BY-TURN
  * ============================
  */
 
 function printInstructions(geojson) {
-    const steps = geojson.features[0]
-        .properties.segments[0].steps;
-
-    console.group("[ORS] Turn-by-turn instructions");
-    for (const step of steps) {
-        console.log(`${step.instruction} (${step.distance.toFixed(0)} m)`);
-    }
+    const steps = geojson.features[0].properties.segments[0].steps;
+    console.group("[ORS] Turn-by-turn");
+    steps.forEach(s => console.log(`${s.instruction} (${s.distance.toFixed(0)} m)`));
     console.groupEnd();
 }
 
