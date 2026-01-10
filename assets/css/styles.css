@@ -16,6 +16,8 @@
     height: 100vh;
     overflow-y: scroll;
     overflow-x: hidden;
+    margin: 0;
+    padding: 0;
 }
 
 body {
@@ -36,6 +38,10 @@ body {
     z-index: 1000;
     background: white;
     padding: 10px;
-    border-radius: 5px;
+    border-radius: 20px;
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+}
+
+#controls > * {
+    margin: 0 16px;
 }
