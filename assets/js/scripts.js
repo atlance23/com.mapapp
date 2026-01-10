@@ -22,44 +22,6 @@ let map;
 
 /**
  * ============================
- * PATCH SHADOW DOM
- * ============================
- */
-
-() => {
-  const originalAttachShadow = Element.prototype.attachShadow;
-  Element.prototype.attachShadow = function(init) {
-
-    // Intercept only the autocomplete component
-    if (this.localName === "gmp-place-autocomplete") {
-
-      // Force the shadow DOM to be "open"
-      const shadow = originalAttachShadow.call(this, { ...init, mode: "open" });
-      
-      // Inject custom height and styling
-      const style = document.createElement("style");
-      style.textContent = `
-        .input-container {
-          height: 32px !important;
-          display: flex;
-          align-items: center;
-        }
-          
-        input {
-          height: 100% !important;
-          font-size: 1.1rem !important;
-        }
-      `;
-      shadow.appendChild(style);
-      return shadow;
-    }
-    return originalAttachShadow.call(this, init);
-  };
-};
-
-
-/**
- * ============================
  * MAP INIT + PLACES CHECK
  * ============================
  */
