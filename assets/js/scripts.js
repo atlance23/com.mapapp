@@ -327,8 +327,8 @@ async function findPath() {
     try {
         console.info("[APP] Starting route");
 
-        const sourceEl = document.getElementById("source");
-        const destEl = document.getElementById("destination");
+        const sourceEl = document.getElementById("source-address");
+        const destEl = document.getElementById("destination-address");
 
         const source = await getPlaceCoordinates(sourceEl);
         const dest = await getPlaceCoordinates(destEl);
