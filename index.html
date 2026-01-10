@@ -6,6 +6,11 @@
     <title>Map App</title>
     <link rel="stylesheet" href="./assets/css/styles.css">
     <script src="./assets/js/patch.js"></script>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#1a73e8">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 </head>
 <body>
     <header id="header">
@@ -45,7 +50,15 @@
             async
             defer>
         </script>
-
+        <script>
+            if ("serviceWorker" in navigator) {
+                window.addEventListener("load", () => {
+                    navigator.serviceWorker.register("/sw.js")
+                    .then(() => console.log("[PWA] Service Worker registered"))
+                    .catch(err => console.error("[PWA] SW failed", err));
+                });
+            }
+        </script>
         <footer>
 
         </footer>
