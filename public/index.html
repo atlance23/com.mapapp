@@ -34,7 +34,8 @@
                     </gmp-place-autocomplete>
                 </div>
 
-                <button id="computeRoute" onclick="findPath()">Start Route</button>
+                <button id="computeRoute" class="primaryBtn" onclick="findPath()">Start Route</button>
+                <button id="install-btn" class="primaryBtn" onclick="installApp()" style="display:none">Install App</button>
             </div>
             <div id="instructions" style="max-height:300px;overflow:auto;"></div>
             <div id="map"></div>
@@ -60,9 +61,7 @@
             }
         </script>
         <footer>
-            <button id="install-btn" onclick="installApp()" style="display:none">
-                Install App
-            </button>
+            
         </footer>
     </main>
 </body>

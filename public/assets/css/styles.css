@@ -91,3 +91,15 @@ body {
     min-width: 175px;
     margin: 16px;
 }
+
+.primaryBtn {
+    background-color: var(--accent-color);
+    color: var(--primary-color);
+    border-radius: 50px;
+    font-size: 1rem;
+    text-transform: uppercase;
+    border: solid 1px var(--accent-color);
+    min-height: 32px;
+    min-width: 175px;
+    margin: 16px;
+}
