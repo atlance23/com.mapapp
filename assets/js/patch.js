@@ -22,12 +22,11 @@
           display: flex;
           align-items: center;
           min-height: 32px !important; /* Ensure min-height doesn't block reduction */
-          margin: 8px !important;
         }
           
         input {
           height: 100% !important;
-          font-size: 1.1rem !important;
+          font-size: 1rem !important;
           padding: 0 8px !important; /* Adjust padding for smaller height */
         }
       `;

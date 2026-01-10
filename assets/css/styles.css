@@ -64,6 +64,7 @@ body {
 
 [id$="address"] {
     border-radius: 50px;
+    margin: 8px;
 }
 
 .autocomplete-wrapper {
