@@ -1,323 +1,240 @@
 /**
  * =========================================================
- * GOOGLE MAPS + OPENROUTESERVICE ROUTING (MO + IL)
- * Fully corrected, single-file, browser-safe version
+ * LIVE TURN‑BY‑TURN NAVIGATION (GOOGLE MAPS + ORS)
+ * One instruction at a time, real‑time GPS updates
  * =========================================================
  */
 
-/*************************
- * GLOBAL CONFIG
- *************************/
-
 const ORS_API_KEY = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjA0YjU2NDRlNDA5ZDQyMDE5ZTMxNjYyMDdlOTEwZDkyIiwiaCI6Im11cm11cjY0In0=";
-
 const CENTER_COORDINATES = { lat: 38.6251, lng: -90.1868 };
-const MAX_ROUTE_KM = 5500;
 const ROUTE_CACHE_PREFIX = "ors_route_";
-const DISABLE_ORS_NEAREST = true; // must stay true in browser (CORS)
+const GPS_UPDATE_MS = 1000;
 
 let map;
-let routePolylines = [];
+let userMarker;
+let routePolyline;
+let navSteps = [];
+let currentStepIndex = 0;
+let watchId = null;
 
-/*************************
+/** ============================
  * MAP INIT
- *************************/
+ * ============================ */
 
 function initMap() {
-    if (!google.maps.places) {
-        throw new Error("Google Places library missing (?libraries=places)");
-    }
-
-    map = new google.maps.Map(document.getElementById("map"), {
-        center: CENTER_COORDINATES,
-        zoom: 7,
-        mapTypeId: "roadmap"
-    });
+  map = new google.maps.Map(document.getElementById("map"), {
+    center: CENTER_COORDINATES,
+    zoom: 14,
+    mapTypeId: "roadmap"
+  });
 }
 
-/*************************
- * PLACE → COORDINATES
- *************************/
+/** ============================
+ * GEOCODING / INPUT
+ * ============================ */
 
 async function getPlaceCoordinates(el) {
-    if (!el || !el.value) {
-        throw new Error("Please select a valid address from autocomplete");
-    }
+  const raw = el.value.trim();
 
-    // New Places API selection
-    if (typeof el.value === "object" && el.value.location) {
-        return {
-            lat: el.value.location.lat,
-            lng: el.value.location.lng
-        };
-    }
+  if (/^-?\d+(\.\d+)?,\s*-?\d+(\.\d+)?$/.test(raw)) {
+    const [lat, lng] = raw.split(',').map(Number);
+    return { lat, lng };
+  }
 
-    const raw = String(el.value).trim();
-
-    // lat,lng manual entry
-    if (/^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/.test(raw)) {
-        const [lat, lng] = raw.split(",").map(Number);
-        return { lat, lng };
-    }
-
-    // Fallback geocoder
-    const geocoder = new google.maps.Geocoder();
-
-    return new Promise((resolve, reject) => {
-        geocoder.geocode({ address: raw }, (results, status) => {
-            if (status !== "OK" || !results[0]) {
-                reject(new Error("Unable to resolve address"));
-                return;
-            }
-            const loc = results[0].geometry.location;
-            resolve({ lat: loc.lat(), lng: loc.lng() });
-        });
+  const geocoder = new google.maps.Geocoder();
+  return new Promise((resolve, reject) => {
+    geocoder.geocode({ address: raw }, (results, status) => {
+      if (status !== "OK" || !results[0]) {
+        reject(new Error("Unable to resolve address"));
+        return;
+      }
+      const loc = results[0].geometry.location;
+      resolve({ lat: loc.lat(), lng: loc.lng() });
     });
+  });
 }
 
-/*************************
- * DISTANCE HELPER
- *************************/
-
-function haversine(a, b) {
-    const R = 6371000;
-    const toRad = d => d * Math.PI / 180;
-
-    const dLat = toRad(b.lat - a.lat);
-    const dLng = toRad(b.lng - a.lng);
-
-    return 2 * R * Math.asin(Math.sqrt(
-        Math.sin(dLat / 2) ** 2 +
-        Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) *
-        Math.sin(dLng / 2) ** 2
-    ));
-}
-
-/*************************
- * ROUTE CACHE
- *************************/
+/** ============================
+ * ROUTING (ORS)
+ * ============================ */
 
 function routeCacheKey(a, b) {
-    return `${ROUTE_CACHE_PREFIX}${a.lat},${a.lng}_${b.lat},${b.lng}`;
-}
-
-function loadCachedRoute(a, b) {
-    const raw = localStorage.getItem(routeCacheKey(a, b));
-    return raw ? JSON.parse(raw) : null;
-}
-
-function saveCachedRoute(a, b, data) {
-    try {
-        localStorage.setItem(routeCacheKey(a, b), JSON.stringify(data));
-    } catch {
-        clearORSCache();
-    }
-}
-
-function clearORSCache() {
-    Object.keys(localStorage)
-        .filter(k => k.startsWith(ROUTE_CACHE_PREFIX))
-        .forEach(k => localStorage.removeItem(k));
-}
-
-/*************************
- * OPENROUTESERVICE ROUTING
- *************************/
-
-function withSnapRadius(coords, meters = 1500) {
-    return { coordinates: coords, radiuses: coords.map(() => meters) };
+  return `${ROUTE_CACHE_PREFIX}${a.lat},${a.lng}_${b.lat},${b.lng}`;
 }
 
 async function routeWithORS(source, dest) {
-    const cached = loadCachedRoute(source, dest);
-    if (cached) return cached;
+  const key = routeCacheKey(source, dest);
+  const cached = localStorage.getItem(key);
+  if (cached) return JSON.parse(cached);
 
-    const distanceKm = haversine(source, dest) / 1000;
-    if (distanceKm > MAX_ROUTE_KM) {
-        throw new Error("Route exceeds ORS free tier limits");
+  const body = {
+    coordinates: [[source.lng, source.lat], [dest.lng, dest.lat]],
+    radiuses: [1500, 1500],
+    instructions: true,
+    preference: "fastest"
+  };
+
+  const res = await fetch(
+    "https://api.openrouteservice.org/v2/directions/driving-car/geojson",
+    {
+      method: "POST",
+      headers: {
+        Authorization: ORS_API_KEY,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body)
     }
+  );
 
-    const body = {
-        ...withSnapRadius([
-            [source.lng, source.lat],
-            [dest.lng, dest.lat]
-        ]),
-        instructions: true,
-        geometry: true,
-        preference: "fastest",
-        options: { avoid_features: ["ferries"] }
-    };
+  if (!res.ok) throw new Error("Routing failed");
 
-    const res = await fetch(
-        "https://api.openrouteservice.org/v2/directions/driving-car/geojson",
-        {
-            method: "POST",
-            headers: {
-                "Authorization": ORS_API_KEY,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify(body)
-        }
-    );
-
-    if (!res.ok) {
-        throw new Error(`[ORS] ${res.status}: ${await res.text()}`);
-    }
-
-    const data = await res.json();
-    saveCachedRoute(source, dest, data);
-    return data;
+  const data = await res.json();
+  try { localStorage.setItem(key, JSON.stringify(data)); } catch {}
+  return data;
 }
 
-async function routeWithORSSnapping(source, dest) {
-    // snapping intentionally disabled in browser
-    return routeWithORS(source, dest);
+/** ============================
+ * NAVIGATION SETUP
+ * ============================ */
+
+function startNavigation(geojson) {
+  navSteps = geojson.features[0].properties.segments[0].steps;
+  currentStepIndex = 0;
+
+  if (routePolyline) routePolyline.setMap(null);
+
+  const coords = geojson.features[0].geometry.coordinates.map(
+    ([lng, lat]) => ({ lat, lng })
+  );
+
+  routePolyline = new google.maps.Polyline({
+    path: coords,
+    strokeColor: "#3498db",
+    strokeWeight: 5,
+    map
+  });
+
+  document.getElementById("controls").style.display = "none";
+  document.getElementById("instructions").style.display = "block";
+
+  startGPS();
+  updateInstruction();
 }
 
-/*************************
- * MAP VISUALIZATION
- *************************/
+/** ============================
+ * GPS + REALTIME UPDATES
+ * ============================ */
 
-function visualizeORSRoute(geojson) {
-    routePolylines.forEach(p => p.setMap(null));
-    routePolylines = [];
+function startGPS() {
+  if (!navigator.geolocation) {
+    alert("Geolocation not supported");
+    return;
+  }
 
-    const coords = geojson.features[0].geometry.coordinates;
+  watchId = navigator.geolocation.watchPosition(
+    pos => {
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      const here = { lat, lng };
 
-    const polyline = new google.maps.Polyline({
-        path: coords.map(([lng, lat]) => ({ lat, lng })),
-        strokeColor: "#3498db",
-        strokeWeight: 5,
-        map
-    });
+      if (!userMarker) {
+        userMarker = new google.maps.Marker({
+          position: here,
+          map,
+          icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 8,
+            fillColor: "#1abc9c",
+            fillOpacity: 1,
+            strokeWeight: 2
+          }
+        });
+      } else {
+        userMarker.setPosition(here);
+      }
 
-    routePolylines.push(polyline);
+      map.setCenter(here);
+      map.setZoom(18);
 
-    const bounds = new google.maps.LatLngBounds();
-    coords.forEach(([lng, lat]) => bounds.extend({ lat, lng }));
-    map.fitBounds(bounds);
+      checkStepProgress(here);
+    },
+    err => alert("Location permission required"),
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+  );
 }
 
-/*************************
- * DIRECTIONS UI
- *************************/
-
-function showDirectionsPanel() {
-    const controls = document.getElementById("controls");
-    const instructions = document.getElementById("instructions");
-    if (controls) controls.style.display = "none";
-    if (instructions) instructions.style.display = "block";
+function stopGPS() {
+  if (watchId) navigator.geolocation.clearWatch(watchId);
 }
 
-function resetRouteUI() {
-    const controls = document.getElementById("controls");
-    const instructions = document.getElementById("instructions");
+/** ============================
+ * STEP TRACKING
+ * ============================ */
 
-    if (controls) controls.style.display = "block";
-    if (instructions) {
-        instructions.style.display = "none";
-        instructions.innerHTML = "";
-    }
+function checkStepProgress(position) {
+  if (!navSteps[currentStepIndex]) return;
+
+  const wp = navSteps[currentStepIndex].way_points;
+  const target = routePolyline.getPath().getAt(wp[1]);
+
+  const dist = google.maps.geometry.spherical.computeDistanceBetween(
+    new google.maps.LatLng(position.lat, position.lng),
+    target
+  );
+
+  if (dist < 25) {
+    currentStepIndex++;
+    updateInstruction();
+  }
+}
+
+function updateInstruction() {
+  const container = document.getElementById("instructions");
+  container.innerHTML = "";
+
+  if (!navSteps[currentStepIndex]) {
+    container.innerHTML = "<strong>Destination reached</strong>";
+    stopGPS();
+    return;
+  }
+
+  const step = navSteps[currentStepIndex];
+
+  const card = document.createElement("div");
+  card.style.fontSize = "1.2rem";
+  card.style.padding = "12px";
+  card.style.border = "1px solid #ccc";
+  card.style.borderRadius = "8px";
+
+  card.innerHTML = `
+    <div style="font-size:2rem">${turnIcon(step)}</div>
+    <strong>${step.instruction}</strong><br>
+    <small>${step.distance.toFixed(0)} m</small>
+  `;
+
+  container.appendChild(card);
 }
 
 function turnIcon(step) {
-    const t = step.instruction.toLowerCase();
-    if (t.includes("left")) return "⬅️";
-    if (t.includes("right")) return "➡️";
-    if (t.includes("merge")) return "↗️";
-    if (t.includes("exit")) return "⤴️";
-    if (t.includes("roundabout")) return "⭕";
-    return "⬆️";
+  const t = step.instruction.toLowerCase();
+  if (t.includes("left")) return "⬅️";
+  if (t.includes("right")) return "➡️";
+  if (t.includes("exit")) return "⤴️";
+  if (t.includes("merge")) return "↗️";
+  return "⬆️";
 }
 
-function highwayShield(text) {
-    const match = text.match(/(I-|US-|MO-|IL-)?\s?\d+/);
-    if (!match) return null;
-
-    const span = document.createElement("span");
-    span.textContent = match[0];
-    span.style.cssText = "padding:2px 6px;margin-right:6px;border-radius:6px;background:#2c3e50;color:white;font-size:.75rem";
-    return span;
-}
-
-function groupSteps(steps) {
-    const groups = [];
-    let current = null;
-
-    for (const step of steps) {
-        const road = step.name || "Continue";
-        if (!current || current.road !== road) {
-            current = { road, steps: [] };
-            groups.push(current);
-        }
-        current.steps.push(step);
-    }
-    return groups;
-}
-
-function renderDirections(geojson) {
-    const container = document.getElementById("instructions");
-    container.innerHTML = "";
-
-    const segment = geojson.features[0].properties.segments[0];
-
-    container.innerHTML += `
-        <strong>Total Distance:</strong> ${(segment.distance / 1000).toFixed(1)} km<br>
-        <strong>Estimated Time:</strong> ${(segment.duration / 60).toFixed(0)} min
-        <hr>
-    `;
-
-    groupSteps(segment.steps).forEach(group => {
-        const details = document.createElement("details");
-        details.open = true;
-
-        const summary = document.createElement("summary");
-        const shield = highwayShield(group.road);
-        if (shield) summary.appendChild(shield);
-        summary.append(group.road);
-
-        details.appendChild(summary);
-
-        const list = document.createElement("ol");
-        list.style.paddingLeft = "20px";
-
-        group.steps.forEach(step => {
-            const li = document.createElement("li");
-            li.textContent = `${turnIcon(step)} ${step.instruction} (${step.distance.toFixed(0)} m)`;
-            list.appendChild(li);
-        });
-
-        details.appendChild(list);
-        container.appendChild(details);
-    });
-
-    const back = document.createElement("button");
-    back.textContent = "Edit Route";
-    back.style.marginTop = "12px";
-    back.onclick = resetRouteUI;
-    container.appendChild(back);
-}
-
-/*************************
+/** ============================
  * ENTRY POINT
- *************************/
+ * ============================ */
 
 async function findPath() {
-    try {
-        const sourceEl = document.getElementById("source-address");
-        const destEl = document.getElementById("destination-address");
-
-        const source = await getPlaceCoordinates(sourceEl);
-        const dest = await getPlaceCoordinates(destEl);
-
-        const geojson = await routeWithORSSnapping(source, dest);
-
-        renderDirections(geojson);
-        visualizeORSRoute(geojson);
-        showDirectionsPanel();
-
-    } catch (err) {
-        console.error(err);
-        alert(err.message);
-    }
+  try {
+    const src = await getPlaceCoordinates(document.getElementById("source-address"));
+    const dst = await getPlaceCoordinates(document.getElementById("destination-address"));
+    const geojson = await routeWithORS(src, dst);
+    startNavigation(geojson);
+  } catch (e) {
+    alert(e.message);
+  }
 }
