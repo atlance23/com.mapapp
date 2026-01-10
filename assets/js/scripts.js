@@ -49,6 +49,14 @@ async function routeWithORS(source, dest) {
         preference: "fastest"
     };
 
+    console.log("[DEBUG] Source:", source);
+    console.log("[DEBUG] Destination:", dest);
+    console.log(
+        "[DEBUG] Straight-line distance (km):",
+        haversine(source, dest) / 1000
+    );
+
+
     const res = await fetch(
         "https://api.openrouteservice.org/v2/directions/driving-car/geojson",
         {
