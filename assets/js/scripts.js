@@ -46,18 +46,42 @@ function initMap() {
  * ============================
  */
 
-function getPlaceCoordinates(el) {
-    const place = el.value?.location;
-
-    if (!place) {
-        throw new Error("Please select a valid address from autocomplete");
+async function getPlaceCoordinates(el) {
+    // Case 1: New Places API (PlaceAutocompleteElement-style)
+    if (el.value && typeof el.value === "object" && el.value.location) {
+        return {
+            lat: el.value.location.lat,
+            lng: el.value.location.lng
+        };
     }
 
-    return {
-        lat: place.lat,
-        lng: place.lng
-    };
+    const raw = el.value.trim();
+
+    // Case 2: User typed "lat,lng"
+    if (/^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/.test(raw)) {
+        const [lat, lng] = raw.split(",").map(Number);
+        return { lat, lng };
+    }
+
+    // Case 3: Fallback to geocoding typed address
+    const geocoder = new google.maps.Geocoder();
+
+    return new Promise((resolve, reject) => {
+        geocoder.geocode({ address: raw }, (results, status) => {
+            if (status !== "OK" || !results[0]) {
+                reject(new Error("Unable to resolve address"));
+                return;
+            }
+
+            const loc = results[0].geometry.location;
+            resolve({
+                lat: loc.lat(),
+                lng: loc.lng()
+            });
+        });
+    });
 }
+
 
 /**
  * ============================
@@ -216,8 +240,8 @@ async function findPath() {
         const sourceEl = document.getElementById("source");
         const destEl = document.getElementById("destination");
 
-        const source = getPlaceCoordinates(sourceEl);
-        const dest = getPlaceCoordinates(destEl);
+        const source = await getPlaceCoordinates(sourceEl);
+        const dest = await getPlaceCoordinates(destEl);
 
         const geojson = await routeWithORS(source, dest);
 
