@@ -55,6 +55,6 @@ body {
     max-height: 32px;
 }
 
-[id$="address"] > * > div > div.input-container {
+[id$="address"] > div > div.input-container {
     max-height: 32px;
 }
