@@ -11,15 +11,22 @@
  * ============================
  */
 
-const ORS_API_KEY = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjA0YjU2NDRlNDA5ZDQyMDE5ZTMxNjYyMDdlOTEwZDkyIiwiaCI6Im11cm11cjY0In0="; // <-- REQUIRED
+const ORS_API_KEY = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjA0YjU2NDRlNDA5ZDQyMDE5ZTMxNjYyMDdlOTEwZDkyIiwiaCI6Im11cm11cjY0In0="; // REQUIRED
 
 const centerCoordinates = { lat: 38.6251, lng: -90.1868 };
 let map;
+
+// ORS free tier safety limit (~6000 km)
+const MAX_ROUTE_KM = 5500;
 
 /**
  * ============================
  * MAP INIT
  * ============================
+ * Load Google Maps JS with:
+ * <script async defer
+ *   src="https://maps.googleapis.com/maps/api/js?key=YOUR_KEY&callback=initMap">
+ * </script>
  */
 
 function initMap() {
@@ -32,12 +39,43 @@ function initMap() {
 
 /**
  * ============================
+ * DISTANCE HELPER (VALIDATION ONLY)
+ * ============================
+ */
+
+function haversine(a, b) {
+    const R = 6371000;
+    const toRad = x => x * Math.PI / 180;
+
+    const dLat = toRad(b.lat - a.lat);
+    const dLng = toRad(b.lng - a.lng);
+
+    return 2 * R * Math.asin(Math.sqrt(
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(a.lat)) *
+        Math.cos(toRad(b.lat)) *
+        Math.sin(dLng / 2) ** 2
+    ));
+}
+
+/**
+ * ============================
  * OPENROUTESERVICE ROUTING
  * ============================
  */
 
 async function routeWithORS(source, dest) {
     console.info("[ORS] Requesting route");
+
+    console.debug("[DEBUG] Source:", source);
+    console.debug("[DEBUG] Destination:", dest);
+
+    const distanceKm = haversine(source, dest) / 1000;
+    console.debug("[DEBUG] Straight-line distance (km):", distanceKm);
+
+    if (distanceKm > MAX_ROUTE_KM) {
+        throw new Error("Route distance exceeds OpenRouteService free tier limits.");
+    }
 
     const body = {
         coordinates: [
@@ -48,14 +86,6 @@ async function routeWithORS(source, dest) {
         geometry: true,
         preference: "fastest"
     };
-
-    console.log("[DEBUG] Source:", source);
-    console.log("[DEBUG] Destination:", dest);
-    console.log(
-        "[DEBUG] Straight-line distance (km):",
-        haversine(source, dest) / 1000
-    );
-
 
     const res = await fetch(
         "https://api.openrouteservice.org/v2/directions/driving-car/geojson",
