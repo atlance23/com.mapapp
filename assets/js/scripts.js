@@ -16,6 +16,7 @@ const ORS_API_KEY = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjA0YjU
 const CENTER_COORDINATES = { lat: 38.6251, lng: -90.1868 };
 const MAX_ROUTE_KM = 5500;
 const ROUTE_CACHE_PREFIX = "ors_route_";
+const DISABLE_ORS_NEAREST = true;
 
 let map;
 
@@ -119,7 +120,18 @@ function loadCachedRoute(a, b) {
 }
 
 function saveCachedRoute(a, b, data) {
-    localStorage.setItem(routeCacheKey(a, b), JSON.stringify(data));
+    try {
+        localStorage.setItem(routeCacheKey(a, b), JSON.stringify(data));
+    } catch (e) {
+        console.warn("[CACHE] Storage full, clearing ORS cache");
+        clearORSCache();
+    }
+}
+
+function clearORSCache() {
+    Object.keys(localStorage)
+        .filter(k => k.startsWith(ROUTE_CACHE_PREFIX))
+        .forEach(k => localStorage.removeItem(k));
 }
 
 /**
@@ -236,9 +248,13 @@ function printInstructions(geojson) {
  * ============================
  */
 
-async function snapToRoad(point) {
+async function snapToRoad(coord) {
+    if (DISABLE_ORS_NEAREST) {
+        throw new Error("ORS nearest disabled (CORS)");
+    }
+
     const url =
-        "https://api.openrouteservice.org/v2/nearest/driving-car" +
+        "https://api.openrouteservice.org/v2/directions/driving-car/geojson" +
         `?coordinates=${point.lng},${point.lat}` +
         "&number=1";
 
@@ -269,6 +285,11 @@ async function snapToRoad(point) {
  */
 
 async function routeWithORSSnapping(source, dest) {
+    
+    if (DISABLE_ORS_NEAREST) {
+        return routeWithORS(source, dest);
+    }
+
     let snappedSource = source;
     let snappedDest = dest;
 
