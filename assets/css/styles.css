@@ -45,5 +45,5 @@ body {
 }
 
 #controls > * {
-    margin: 0 16px;
+    margin: 16px 0;
 }
