@@ -14,17 +14,16 @@
         <section>
             <div id="controls">
                 <h4>Enter Trip Details</h4>
-                <label for="source">Source:</label>
                 <gmp-place-autocomplete
                     id="source-address"
                     placeholder="Start location">
                 </gmp-place-autocomplete>
-                <label for="destination">Destination:</label>
                 <gmp-place-autocomplete
                     id="destination-address"
                     placeholder="Destination">
                 </gmp-place-autocomplete>
-                <button onclick="findPath()">Find Shortest Path</button>
+
+                <button id="computeRoute" onclick="findPath()">Find Shortest Path</button>
             </div>
             <div id="instructions" style="max-height:300px;overflow:auto;"></div>
             <div id="map"></div>

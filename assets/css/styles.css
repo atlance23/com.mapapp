@@ -1,5 +1,11 @@
 @import url('https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900&display=swap');
 
+/**
+*   =================
+*   #### GLOBALS ####
+*   =================
+*/
+
 * {
     box-sizing: border-box;
 }
@@ -28,6 +34,12 @@ body {
     padding: 0;
 }
 
+/**
+*   =============
+*   #### MAP ####
+*   =============
+*/
+
 #map {
     height: 100vh;
     width: 100%;
@@ -52,4 +64,12 @@ body {
 
 [id$="address"] {
     border-radius: 50px;
+}
+
+#computeRoute {
+    background-color: var(--accent-color);
+    color: var(--primary-color);
+    border-radius: 50px;
+    font-size: 1rem;
+    text-transform: uppercase;
 }
