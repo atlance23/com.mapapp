@@ -41,11 +41,17 @@
     <main id="root">
         <section>
             <div id="controls">
-                <h4>Enter Coordinates</h4>
-                <label for="source">Source (lat,lng):</label>
-                <input type="text" id="source" placeholder="37.7749,-122.4194"><br>
-                <label for="destination">Destination (lat,lng):</label>
-                <input type="text" id="destination" placeholder="37.7750,-122.4183"><br>
+                <h4>Enter Trip Details</h4>
+                <label for="source">Start:</label>
+                <gmp-place-autocomplete
+                    id="source"
+                    placeholder="Start location">
+                </gmp-place-autocomplete>
+                <label for="destination">Destination:</label>
+                <gmp-place-autocomplete
+                    id="destination"
+                    placeholder="Destination">
+                </gmp-place-autocomplete>
                 <button onclick="findPath()">Find Shortest Path</button>
             </div>
             <div id="instructions" style="max-height:300px;overflow:auto;"></div>
