@@ -29,12 +29,13 @@ let lastRerouteTime = 0;
  * ============================ */
 
 function initMap() {
-  map = new google.maps.Map(document.getElementById("map"), {
-    center: CENTER_COORDINATES,
-    zoom: 14,
-    tilt: 45,
-    mapTypeId: "roadmap"
-  });
+    map = new google.maps.Map(document.getElementById("map"), {
+        center: CENTER_COORDINATES,
+        zoom: 14,
+        tilt: 45,
+        mapTypeId: "roadmap",
+        mapId: "62adc9fbef5b7a4a72c5cb13"
+    });
 }
 
 let userAdvancedMarker;
