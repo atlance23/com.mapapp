@@ -26,6 +26,13 @@ const ROUTE_CACHE_PREFIX = "ors_route_";
  */
 
 function initMap() {
+    if (!google.maps.places) {
+        throw new Error(
+            "Google Places library not loaded. " +
+            "Add &libraries=places to the Maps JS script tag."
+        );
+    }
+
     map = new google.maps.Map(document.getElementById("map"), {
         center: centerCoordinates,
         zoom: 7,
