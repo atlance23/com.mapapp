@@ -68,7 +68,7 @@ body {
 
 .autocomplete-wrapper {
     height: 32px;
-    margin: 0 8px;
+    margin: 8px 0;
 }
 
 #computeRoute {
