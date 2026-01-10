@@ -300,6 +300,8 @@ function updateInstruction() {
       background:#fff;
       border-radius:12px;
       box-shadow:0 4px 12px rgba(0,0,0,.15)">
+      background-color: #000;
+      color: #FFF;
       <div style="font-size:32px">${turnIcon(step)}</div>
       <strong>${step.instruction}</strong><br>
       <small>${formatDistance(step.distance)}</small>
