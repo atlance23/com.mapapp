@@ -21,6 +21,7 @@
           height: 32px !important;
           display: flex;
           align-items: center;
+          max-width: 100% !important;
           min-height: 32px !important; /* Ensure min-height doesn't block reduction */
         }
           
