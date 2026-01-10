@@ -26,24 +26,18 @@ let map;
  */
 
 function initMap() {
+    if (!google.maps.places) {
+        throw new Error(
+            "Google Places library not loaded. " +
+            "Add &libraries=places to the Maps JS script tag."
+        );
+    }
+
     map = new google.maps.Map(document.getElementById("map"), {
-        center: centerCoordinates,
+        center: CENTER_COORDINATES,
         zoom: 7,
         mapTypeId: "roadmap"
     });
-
-    // Initialize PlaceAutocompleteElement (new Places API)
-    const sourceContainer = document.getElementById("source-container");
-    const destContainer = document.getElementById("destination-container");
-
-    const sourceAutocomplete = new google.maps.places.PlaceAutocompleteElement();
-    sourceAutocomplete.id = "source-autocomplete";
-
-    const destAutocomplete = new google.maps.places.PlaceAutocompleteElement();
-    destAutocomplete.id = "destination-autocomplete";
-
-    sourceContainer.appendChild(sourceAutocomplete);
-    destContainer.appendChild(destAutocomplete);
 }
 
 /**
@@ -52,16 +46,16 @@ function initMap() {
  * ============================
  */
 
-function getPlaceCoordinates(autocompleteEl) {
-    const place = autocompleteEl.value;
+function getPlaceCoordinates(el) {
+    const place = el.value?.location;
 
-    if (!place || !place.location) {
+    if (!place) {
         throw new Error("Please select a valid address from autocomplete");
     }
 
     return {
-        lat: place.location.lat,
-        lng: place.location.lng
+        lat: place.lat,
+        lng: place.lng
     };
 }
 
@@ -219,11 +213,11 @@ async function findPath() {
     try {
         console.info("[APP] Starting route");
 
-        const sourceAutocomplete = document.getElementById("source-autocomplete");
-        const destAutocomplete = document.getElementById("destination-autocomplete");
+        const sourceEl = document.getElementById("source");
+        const destEl = document.getElementById("destination");
 
-        const source = getPlaceCoordinates(sourceAutocomplete);
-        const dest = getPlaceCoordinates(destAutocomplete);
+        const source = getPlaceCoordinates(sourceEl);
+        const dest = getPlaceCoordinates(destEl);
 
         const geojson = await routeWithORS(source, dest);
 
@@ -231,9 +225,8 @@ async function findPath() {
         printInstructions(geojson);
 
         console.info("[APP] Routing complete");
-    } catch (e) {
-        console.error("[APP] Routing failed", e);
-        alert(e.message);
+    } catch (err) {
+        console.error("[APP] Routing failed", err);
+        alert(err.message);
     }
 }
-
