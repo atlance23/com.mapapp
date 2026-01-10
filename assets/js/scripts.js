@@ -155,60 +155,59 @@ function drawRoute(coords) {
  * ============================ */
 
 function startGPS() {
-  watchId = navigator.geolocation.watchPosition(
-    pos => {
-        const here = {
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude
-        };
+    watchId = navigator.geolocation.watchPosition(
+        pos => {
+            const here = {
+                lat: pos.coords.latitude,
+                lng: pos.coords.longitude
+            };
 
-        if (!userAdvancedMarker) {
-            const el = document.createElement("div");
-            el.style.width = "16px";
-            el.style.height = "16px";
-            el.style.borderRadius = "50%";
-            el.style.background = "#1a73e8";
-            el.style.border = "3px solid white";
-            el.style.boxShadow = "0 0 8px rgba(26,115,232,.6)";
+            if (!userAdvancedMarker) {
+                const el = document.createElement("div");
+                el.style.width = "16px";
+                el.style.height = "16px";
+                el.style.borderRadius = "50%";
+                el.style.background = "#1a73e8";
+                el.style.border = "3px solid white";
+                el.style.boxShadow = "0 0 8px rgba(26,115,232,.6)";
 
-            userAdvancedMarker = new google.maps.marker.AdvancedMarkerElement({
-                position: here,
+                userAdvancedMarker = new google.maps.marker.AdvancedMarkerElement({
+                    position: here,
+                    map,
+                    content: el
+                });
+            } else {
+                userAdvancedMarker.position = here;
+            }
+
+            accuracyCircle = new google.maps.Circle({
                 map,
-                content: el
+                center: here,
+                radius: pos.coords.accuracy,
+                fillColor: "#1a73e8",
+                fillOpacity: 0.15,
+                strokeOpacity: 0
             });
         } else {
-            userAdvancedMarker.position = here;
-        }
-
-        accuracyCircle = new google.maps.Circle({
-            map,
-            center: here,
-            radius: pos.coords.accuracy,
-            fillColor: "#1a73e8",
-            fillOpacity: 0.15,
-            strokeOpacity: 0
-        });
-      } else {
             userAdvanceMarker.setPosition(here);
             accuracyCircle.setCenter(here);
             accuracyCircle.setRadius(pos.coords.accuracy);
-      }
+        }
 
-      map.setOptions({
-        zoom: 18,
-        heading: pos.coords.heading || map.getHeading() || 0,
-        tilt: 45
-      });
+        map.setOptions({
+            zoom: 18,
+            heading: pos.coords.heading || map.getHeading() || 0,
+            tilt: 45
+        });
 
-      map.panTo(here);
+        map.panTo(here);
 
-      checkStepProgress(here);
-      checkOffRoute(here);
-    },
+        checkStepProgress(here);
+        checkOffRoute(here);
+    ),
     () => alert("Location permission required"),
     { enableHighAccuracy: true, maximumAge: 500, timeout: 10000 }
-  );
-}
+};
 
 /* ============================
  * STEP PROGRESSION
