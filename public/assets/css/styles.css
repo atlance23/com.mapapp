@@ -114,7 +114,7 @@ body {
     box-shadow: 0 0 8px rgba(26,115,232,.6);
 }
 
-#mapInfo {
+.mapInfo {
     width: 100%;
     height: 100px;
     padding: 20px;
