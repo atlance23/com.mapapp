@@ -350,8 +350,8 @@ function updateInstruction() {
       font-family:Roboto,sans-serif;
       border-radius:12px;
       box-shadow:0 4px 12px rgba(0,0,0,.15)
-      background-color: #FFF;
-      color: #000 !important;
+      background-color: #000 !important;
+      color: #FFF !important;
       ">
       <div style="font-size:32px">${turnIcon(step)}</div>
       <strong>${step.instruction}</strong><br>
