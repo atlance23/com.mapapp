@@ -54,6 +54,7 @@ body {
     right: 10px;
     z-index: 1000;
     background: white;
+    color: #000;
     padding: 20px;
     border-radius: 20px;
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);

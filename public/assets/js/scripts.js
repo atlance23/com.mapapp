@@ -163,7 +163,7 @@ function drawRoute(coords) {
 
   new google.maps.Polyline({
     path: coords,
-    strokeColor: "#ffffff",
+    strokeColor: "#1a73e8",
     strokeWeight: 10,
     map
   });
@@ -351,7 +351,7 @@ function updateInstruction() {
       border-radius:12px;
       box-shadow:0 4px 12px rgba(0,0,0,.15)
       background-color: #FFF;
-      color: #000;
+      color: #000 !important;
       ">
       <div style="font-size:32px">${turnIcon(step)}</div>
       <strong>${step.instruction}</strong><br>
