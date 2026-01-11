@@ -152,7 +152,7 @@ function startNav(geojson) {
 
 function updateUIComponents() {
     document.getElementById("controls").style.display = "none";
-    document.getElementById("instructionsContainer").style.display = "block";
+    document.getElementById("instructionsContainer").style.display = "flex";
 }
 
 function renderRoute(coords) {

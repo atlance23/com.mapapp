@@ -139,7 +139,7 @@ body {
 }
 
 #instructionsContainer {
-    display: flex;
+    display: none;
     flex-direction: row;
     justify-items: center;
     align-items: center;
