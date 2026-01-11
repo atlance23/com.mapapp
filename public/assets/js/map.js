@@ -106,10 +106,7 @@ async function fetchORSData(src, dst) {
             1500
         ],
         instructions: INSTRUCTIONS,
-        preference: "fastest",
-        options: [
-
-        ]
+        preference: "fastest"
     };
 
     // Send POST Request
