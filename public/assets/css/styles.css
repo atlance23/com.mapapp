@@ -130,3 +130,7 @@ body {
     background-color: var(--secondary-color);
     color: var(--primary-color);
 }
+
+.mapInfo > * {
+    margin: 8px 0;
+}
