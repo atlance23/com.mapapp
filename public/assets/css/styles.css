@@ -125,5 +125,15 @@ body {
 
 .bi {
     color: white !important;
-    
+    size: 40px;
+}
+
+#icon {
+    height: 100%;
+    width: 40%;
+}
+
+#instructionMeta {
+    height: 100%;
+    width: 60%;
 }
