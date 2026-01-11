@@ -114,7 +114,7 @@ async function fetchORSData(src, dst) {
 
     // Send POST Request
     const res = await fetch(
-        `"${ORS_URI}"`,
+        "https://api.openrouteservice.org/v2/directions/driving-car/geojson",
         {
             method: "POST",
             headers: {
