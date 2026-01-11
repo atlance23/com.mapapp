@@ -13,6 +13,7 @@ const STEP_ARRIVAL_METERS = 25;
 const REROUTE_THRESHOLD_METERS = 80;
 const METERS_PER_MILE = 1609.344;
 const FEET_PER_MILE = 5280;
+const SMOOTHING = 0.15;
 
 
 let map;
@@ -25,6 +26,8 @@ let currentStepIndex = 0;
 let watchId = null;
 let rerouting = false;
 let lastRerouteTime = 0;
+let lastNearestIndex = 0;
+
 
 /* ============================
  * HIGH-FREQUENCY RENDER STATE
@@ -45,8 +48,8 @@ let renderTimer = null;
 function initMap() {
     map = new google.maps.Map(document.getElementById("map"), {
         center: CENTER_COORDINATES,
-        zoom: 14,
-        tilt: 45,
+        zoom: 30,
+        tilt: 0,
         mapTypeId: "roadmap",
         mapId: "62adc9fbef5b7a4a72c5cb13"
     });
@@ -160,10 +163,11 @@ function formatDistance(meters) {
 
 function drawRoute(coords) {
   if (routePolyline) routePolyline.setMap(null);
+  if (routeBasePolyline) routeBasePolyline.setMap(null);
 
-  new google.maps.Polyline({
+  routeBasePolyline = new google.maps.Polyline({
     path: coords,
-    strokeColor: "#1a73e8",
+    strokeColor: "#ffffff",
     strokeWeight: 10,
     map
   });
@@ -171,7 +175,7 @@ function drawRoute(coords) {
   routePolyline = new google.maps.Polyline({
     path: coords,
     strokeColor: "#1a73e8",
-    strokeWeight: 6,
+    strokeWeight: 8,
     strokeLinecap: "round",
     map
   });
@@ -190,13 +194,14 @@ function startGPS() {
                 heading: pos.coords.heading ?? null,
                 accuracy: pos.coords.accuracy
             };
+
             lastFixTime = performance.now();
 
             // Create marker once
             if (!userAdvancedMarker) {
                 const el = document.createElement("div");
-                el.style.width = "16px";
-                el.style.height = "16px";
+                el.style.width = "32px";
+                el.style.height = "32px";
                 el.style.borderRadius = "50%";
                 el.style.background = "#1a73e8";
                 el.style.border = "3px solid white";
@@ -259,14 +264,14 @@ function renderFrame(fix) {
     accuracyCircle.setRadius(fix.accuracy);
 
     map.setOptions({
-        zoom: 18,
+        zoom: 30,
         heading: fix.heading ?? map.getHeading() ?? 0,
-        tilt: 45
+        tilt: 0
     });
 
     map.panTo(displayedPosition);
 
-    // 🚨 Navigation logic uses REAL GPS, not interpolated
+    // Navigation logic uses REAL GPS, not interpolated
     checkStepProgress(fix);
     checkOffRoute(fix);
 }
@@ -294,37 +299,51 @@ function checkStepProgress(position) {
 }
 
 /* ============================
- * AUTO REROUTING
+ * OPTIMIZED AUTO REROUTING (LOW‑LATENCY)
+ * Google‑Maps‑style behavior
  * ============================ */
 
-async function checkOffRoute(position) {
-  if (rerouting) return;
+function distanceToRoute(position) {
+  let min = Infinity;
+  const start = lastNearestIndex;
+  const end = Math.min(lastNearestIndex + 20, routeCoords.length - 1);
 
-  const now = Date.now();
-  if (now - lastRerouteTime < 15000) return; // 15s cooldown
-
-  const nearest = routeCoords.reduce((min, p) => {
+  for (let i = start; i <= end; i++) {
+    const p = routeCoords[i];
     const d = google.maps.geometry.spherical.computeDistanceBetween(
       new google.maps.LatLng(position.lat, position.lng),
       new google.maps.LatLng(p.lat, p.lng)
     );
-    return d < min ? d : min;
-  }, Infinity);
 
-  if (nearest > REROUTE_THRESHOLD_METERS) {
-    rerouting = true;
-    lastRerouteTime = now;
-
-    try {
-      const dest = routeCoords[routeCoords.length - 1];
-      const geojson = await routeWithORS(position, dest);
-      startNavigation(geojson);
-    } catch (e) {
-      console.warn("[NAV] Reroute failed", e);
-    } finally {
-      rerouting = false;
+    if (d < min) {
+      min = d;
+      lastNearestIndex = i;
     }
   }
+
+  return min;
+}
+
+async function checkOffRoute(position) {
+  if (rerouting || !routeCoords.length) return;
+
+  const offRoute = distanceToRoute(position);
+  if (offRoute < REROUTE_THRESHOLD_METERS) return;
+
+  const now = Date.now();
+  const cooldown = offRoute > 120 ? 3000 : 6000; // adaptive cooldown
+  if (now - lastRerouteTime < cooldown) return;
+
+  rerouting = true;
+  lastRerouteTime = now;
+
+  const dest = routeCoords[routeCoords.length - 1];
+
+  // Fire reroute without blocking UI
+  routeWithORS(position, dest)
+    .then(geojson => startNavigation(geojson))
+    .catch(e => console.warn("[NAV] Reroute failed", e))
+    .finally(() => rerouting = false);
 }
 
 
@@ -337,6 +356,7 @@ function updateInstruction() {
   container.innerHTML = "";
 
   const step = navSteps[currentStepIndex];
+  
   if (!step) {
     container.innerHTML = "<strong>Destination reached</strong>";
     navigator.geolocation.clearWatch(watchId);
