@@ -10,33 +10,28 @@
 </head>
 <body>
     <main id="root">
-        <section>
-            <div id="controls">
-                <p id="controlsTitle">Enter Trip Details</p>
-                <div class="autocomplete-wrapper">
-                    <gmp-place-autocomplete
-                        id="src-address"
-                        placeholder="Start location">
-                    </gmp-place-autocomplete>
-                </div>
-                <div class="autocomplete-wrapper">
-                    <gmp-place-autocomplete
-                        id="dst-address"
-                        placeholder="Destination">
-                    </gmp-place-autocomplete>
-                </div>
-                <button id="computeRoute" class="primaryBtn" onclick="findPath()">Start Route</button>
+        <section class="mapInfo">
+            <p id="controlsTitle">Enter Trip Details</p>
+            <div class="autocomplete-wrapper">
+                <gmp-place-autocomplete
+                    id="src-address"
+                    placeholder="Start location">
+                </gmp-place-autocomplete>
+            </div>
+            <div class="autocomplete-wrapper">
+                <gmp-place-autocomplete
+                    id="dst-address"
+                    placeholder="Destination">
+                </gmp-place-autocomplete>
+            </div>
+            <button id="computeRoute" class="primaryBtn" onclick="findPath()">Start Route</button>
             <div id="instructionsContainer">
                 <div id="turnIcon"></div>
                 <p id="instructions"></p>
                 <p id="distance"></p>
             </div>
-            <div id="map"></div>
-            <div id="progress" style="padding:8px;font-family:sans-serif;display:none">
-                <strong>Loading map data:</strong>
-                <span id="progressText">0%</span>
-            </div>
         </section>
+        <section id="map"></section>
     </main>
     <script src="./assets/js/map.js"></script>
     <script

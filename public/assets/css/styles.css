@@ -113,3 +113,18 @@ body {
     border: 3px solid white;
     box-shadow: 0 0 8px rgba(26,115,232,.6);
 }
+
+#mapInfo {
+    width: 100%;
+    height: 100px;
+    padding: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background-color: var(--secondary-color);
+    color: var(--primary-color);
+}
