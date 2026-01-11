@@ -28,7 +28,6 @@ let map;
 let watchId;
 let renderTimer;
 let routePolyline;
-let routeBasePolyline;
 let navSteps = [];
 let routeCoords = [];
 let currentStepIndex = 0;
@@ -155,14 +154,6 @@ function startNav(geojson) {
 
 function renderRoute(coords) {
     if (routePolyline) routePolyline.setMap(null);
-    // if (routeBasePolyline) routeBasePolyline.setMap(null);
-
-    // routeBasePolyline = new google.maps.Polyline({
-    //     path: coords,
-    //     strokeColor: "#ffffff",
-    //     strokeWeight: 10,
-    //     map
-    // });
 
     routePolyline = new google.maps.Polyline({
         path: coords,
