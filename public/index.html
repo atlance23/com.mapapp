@@ -11,20 +11,22 @@
 <body>
     <main id="root">
         <section class="mapInfo">
-            <p id="controlsTitle">Enter Trip Details</p>
-            <div class="autocomplete-wrapper">
-                <gmp-place-autocomplete
-                    id="src-address"
-                    placeholder="Start location">
-                </gmp-place-autocomplete>
+            <div id="controls">
+                <p id="controlsTitle">Enter Trip Details</p>
+                <div class="autocomplete-wrapper">
+                    <gmp-place-autocomplete
+                        id="src-address"
+                        placeholder="Start location">
+                    </gmp-place-autocomplete>
+                </div>
+                <div class="autocomplete-wrapper">
+                    <gmp-place-autocomplete
+                        id="dst-address"
+                        placeholder="Destination">
+                    </gmp-place-autocomplete>
+                </div>
+                <button id="computeRoute" class="primaryBtn" onclick="findPath()">Start Route</button>
             </div>
-            <div class="autocomplete-wrapper">
-                <gmp-place-autocomplete
-                    id="dst-address"
-                    placeholder="Destination">
-                </gmp-place-autocomplete>
-            </div>
-            <button id="computeRoute" class="primaryBtn" onclick="findPath()">Start Route</button>
             <div id="instructionsContainer">
                 <div id="turnIcon"></div>
                 <p id="instructions"></p>

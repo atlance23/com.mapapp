@@ -144,10 +144,16 @@ function startNav(geojson) {
     // Call Core Rendering Functions
     renderRoute(routeCoords);
     if (!watchId) startGPS();
+    updateUIComponents();
     $(document).ready(function(){
         setTimeout(updateInstructionUI, 1000);
     });
 };
+
+function updateUIComponents() {
+    document.getElementById("controls").style.display = "none";
+    document.getElementById("instructionsContainer").style.display = "block";
+}
 
 function renderRoute(coords) {
     if (routePolyline) routePolyline.setMap(null);
