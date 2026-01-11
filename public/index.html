@@ -6,66 +6,51 @@
     <title>Map App</title>
     <link rel="stylesheet" href="./assets/css/styles.css">
     <script src="./assets/js/patch.js"></script>
-    <link rel="manifest" href="/manifest.json">
-    <meta name="theme-color" content="#1a73e8">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.3.1/dist/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
 </head>
 <body>
-    <header id="header">
-
-    </header>
     <main id="root">
         <section>
             <div id="controls">
                 <p id="controlsTitle">Enter Trip Details</p>
                 <div class="autocomplete-wrapper">
                     <gmp-place-autocomplete
-                        id="source-address"
+                        id="src-address"
                         placeholder="Start location">
                     </gmp-place-autocomplete>
                 </div>
-                
                 <div class="autocomplete-wrapper">
                     <gmp-place-autocomplete
-                        id="destination-address"
+                        id="dst-address"
                         placeholder="Destination">
                     </gmp-place-autocomplete>
                 </div>
-
                 <button id="computeRoute" class="primaryBtn" onclick="findPath()">Start Route</button>
-                <button id="install-btn" class="primaryBtn" onclick="installApp()" style="display:none">Install App</button>
-            </div>
-            <div id="instructions">
-                <div style="font-size:32px">${turnIcon(step)}</div>
-                <p> </p>
+            <div id="instructionsContainer">
+                <div id="turnIcon"></div>
+                <p id="instructions"></p>
+                <p id="distance"></p>
             </div>
             <div id="map"></div>
             <div id="progress" style="padding:8px;font-family:sans-serif;display:none">
                 <strong>Loading map data:</strong>
                 <span id="progressText">0%</span>
             </div>
-
         </section>
-        <script src="./assets/js/scripts.js"></script>
-        <script
-            src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBQlrZtfXXjfw6D-wDmNIAOxEV20V5E2U8&callback=initMap&libraries=places,geometry,marker&v=weekly&loading=async"
-            async
-            defer>
-        </script>
-        <script>
-            if ("serviceWorker" in navigator) {
-                window.addEventListener("load", () => {
-                    navigator.serviceWorker.register("/sw.js")
-                    .then(() => console.log("[PWA] Service Worker registered"))
-                    .catch(err => console.error("[PWA] SW failed", err));
-                });
-            }
-        </script>
-        <footer>
-            
-        </footer>
     </main>
+    <script src="./assets/js/map.js"></script>
+    <script
+        src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBQlrZtfXXjfw6D-wDmNIAOxEV20V5E2U8&callback=initMap&libraries=places,geometry,marker&v=weekly&loading=async"
+        async
+        defer>
+    </script>
+    <script 
+        src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" 
+        integrity="sha512-v2CJ7UaYy4JwqLDIrZUI/4hqeoQieOmAZNXBeQyjo21dadnwR+8ZaIJVT8EE2iyI61OV8e6M8PP2/4hpQINQ/g==" 
+        crossorigin="anonymous" 
+        referrerpolicy="no-referrer"
+        async
+        defer>
+    </script>
 </body>
 </html>

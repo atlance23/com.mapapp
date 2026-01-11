@@ -14,6 +14,7 @@ const REROUTE_THRESHOLD_METERS = 80;
 const METERS_PER_MILE = 1609.344;
 const FEET_PER_MILE = 5280;
 const SMOOTHING = 0.15;
+const RENDER_INTERVAL_MS = 100;
 
 
 let map;
@@ -27,18 +28,11 @@ let watchId = null;
 let rerouting = false;
 let lastRerouteTime = 0;
 let lastNearestIndex = 0;
-
-
-/* ============================
- * HIGH-FREQUENCY RENDER STATE
- * ============================ */
-
-const RENDER_INTERVAL_MS = 100;
-
-let lastFix = null;           // last GPS fix
+let lastFix = null;
 let lastFixTime = 0;
 let displayedPosition = null;
 let renderTimer = null;
+let userAdvancedMarker;
 
 
 /* ============================
@@ -55,7 +49,6 @@ function initMap() {
     });
 }
 
-let userAdvancedMarker;
 
 /* ============================
  * INPUT → COORDINATES
@@ -86,23 +79,13 @@ async function getPlaceCoordinates(el) {
  * ROUTING (ORS)
  * ============================ */
 
-function routeCacheKey(a, b) {
-  return `${ROUTE_CACHE_PREFIX}${a.lat},${a.lng}_${b.lat},${b.lng}`;
-}
-
 async function routeWithORS(source, dest) {
-  const key = routeCacheKey(source, dest);
-  const cached = localStorage.getItem(key);
-  if (cached) return JSON.parse(cached);
 
   const body = {
     coordinates: [[source.lng, source.lat], [dest.lng, dest.lat]],
     radiuses: [1500, 1500],
     instructions: true,
     preference: "fastest",
-    options: {
-      avoid_features: ["ferries"]
-    }
   };
 
   const res = await fetch(
@@ -120,7 +103,7 @@ async function routeWithORS(source, dest) {
   if (!res.ok) throw new Error("Routing failed");
 
   const data = await res.json();
-  try { localStorage.setItem(key, JSON.stringify(data)); } catch {}
+
   return data;
 }
 
@@ -137,12 +120,14 @@ function startNavigation(geojson) {
   );
 
   drawRoute(routeCoords);
-
-  document.getElementById("controls").style.display = "none";
-  document.getElementById("instructions").style.display = "block";
-
+  updateUIComponents();
   startGPS();
   updateInstruction();
+}
+
+function updateUIComponents() {
+  document.getElementById("controls").style.display = "none";
+  document.getElementById("instructions").style.display = "block";
 }
 
 function formatDistance(meters) {
@@ -352,64 +337,39 @@ async function checkOffRoute(position) {
  * ============================ */
 
 function updateInstruction() {
-  const container = document.getElementById("instructions");
-  container.innerHTML = "";
+  const instructions = document.getElementById("instructions");
+  const distance = document.getElementById("distance");
+  const turnIcon = document.getElementById("turnIcon");
+
+  instructions.innerHTML = "";
+  distance.innerHTML = "";
+  turnIcon.innerHTML = ""
 
   const step = navSteps[currentStepIndex];
   
   if (!step) {
-    container.innerHTML = "<strong>Destination reached</strong>";
+    instructions.innerHTML = "<strong>Destination reached</strong>";
     navigator.geolocation.clearWatch(watchId);
     stopRenderLoop();
     return;
   }
 
-  container.innerHTML = `
-    <div style="
-      padding:16px;
-      font-family:Roboto,sans-serif;
-      border-radius:12px;
-      box-shadow:0 4px 12px rgba(0,0,0,.15)
-      background-color: #000 !important;
-      color: #FFF !important;
-      ">
-      <div style="font-size:32px">${turnIcon(step)}</div>
-      <strong>${step.instruction}</strong><br>
-      <small>${formatDistance(step.distance)}</small>
-    </div>
-  `;
+  turnIcon.innerHTML = `${turnIcon(step)}`
+  instructions.innerHTML = `${step.instruction}`
+  distance.innerHTML = `${formatDistance(step.distance)}`;
 }
 
 function turnIcon(step) {
   const t = step.instruction.toLowerCase();
-  if (t.includes("left")) return "⬅️";
-  if (t.includes("right")) return "➡️";
-  if (t.includes("exit")) return "⤴️";
-  if (t.includes("merge")) return "↗️";
-  return "⬆️";
+  if (t.includes("left")) return `<i class="bi bi-arrow-90deg-left"></i>`;
+  if (t.includes("right")) return `<i class="bi bi-arrow-90deg-right"></i>`;
+  if (t.includes("exit")) return ``;
+  return `<i class="bi bi-arrow-up"></i>`;
 }
 
-/* ============================
- * PWA DEFERRED PROMPT
- * ============================ */
-
-let deferredPrompt = null;
-
-window.addEventListener("beforeinstallprompt", e => {
-    e.preventDefault();
-    deferredPrompt = e;
-    document.getElementById("install-btn").style.display = "block";
+$(document).ready(function(){
+    setTimeout(updateInstruction, 1000);
 });
-
-async function installApp() {
-    if (!deferredPrompt) return;
-
-    deferredPrompt.prompt();
-    const choice = await deferredPrompt.userChoice;
-    deferredPrompt = null;
-
-    document.getElementById("install-btn").style.display = "none";
-}
 
 
 /* ============================
