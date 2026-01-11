@@ -125,10 +125,14 @@ body {
 
 .bi {
     color: white !important;
-    size: 40px;
+    font-size: 40px !important;
+    size: 40px !important;
 }
 
 #icon {
+    display: flex;
+    justify-content: center;
+    align-items: center;
     height: 100%;
     width: 40%;
 }
