@@ -26,6 +26,17 @@ let watchId = null;
 let rerouting = false;
 let lastRerouteTime = 0;
 
+/* ============================
+ * HIGH-FREQUENCY RENDER STATE
+ * ============================ */
+
+const RENDER_INTERVAL_MS = 100;
+
+let lastFix = null;           // last GPS fix
+let lastFixTime = 0;
+let displayedPosition = null;
+let renderTimer = null;
+
 
 /* ============================
  * MAP INIT
@@ -172,55 +183,94 @@ function drawRoute(coords) {
 
 function startGPS() {
     watchId = navigator.geolocation.watchPosition(
-    pos => {
-        const here = {
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude
-        };
+        pos => {
+            lastFix = {
+                lat: pos.coords.latitude,
+                lng: pos.coords.longitude,
+                heading: pos.coords.heading ?? null,
+                accuracy: pos.coords.accuracy
+            };
+            lastFixTime = performance.now();
 
-        if (!userAdvancedMarker) {
-            const el = document.createElement("div");
-            el.style.width = "16px";
-            el.style.height = "16px";
-            el.style.borderRadius = "50%";
-            el.style.background = "#1a73e8";
-            el.style.border = "3px solid white";
-            el.style.boxShadow = "0 0 8px rgba(26,115,232,.6)";
+            // Create marker once
+            if (!userAdvancedMarker) {
+                const el = document.createElement("div");
+                el.style.width = "16px";
+                el.style.height = "16px";
+                el.style.borderRadius = "50%";
+                el.style.background = "#1a73e8";
+                el.style.border = "3px solid white";
+                el.style.boxShadow = "0 0 8px rgba(26,115,232,.6)";
 
-            userAdvancedMarker = new google.maps.marker.AdvancedMarkerElement({
-                position: here,
-                map,
-                content: el
-            });
+                userAdvancedMarker = new google.maps.marker.AdvancedMarkerElement({
+                    position: lastFix,
+                    map,
+                    content: el
+                });
 
-            accuracyCircle = new google.maps.Circle({
-                map,
-                center: here,
-                radius: pos.coords.accuracy,
-                fillColor: "#1a73e8",
-                fillOpacity: 0.15,
-                strokeOpacity: 0
-            });
-        } else {
-            userAdvancedMarker.position = here;
-            accuracyCircle.setCenter(here);
-            accuracyCircle.setRadius(pos.coords.accuracy);
-        }
+                accuracyCircle = new google.maps.Circle({
+                    map,
+                    center: lastFix,
+                    radius: pos.coords.accuracy,
+                    fillColor: "#1a73e8",
+                    fillOpacity: 0.15,
+                    strokeOpacity: 0
+                });
+            }
+        },
+        () => alert("Location permission required"),
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+    );
 
-        map.setOptions({
-            zoom: 18,
-            heading: pos.coords.heading || map.getHeading() || 0,
-            tilt: 45
-        });
+    startRenderLoop();
+}
 
-        map.panTo(here);
 
-        checkStepProgress(here);
-        checkOffRoute(here);
-    },
-    () => alert("Location permission required"),
-    { enableHighAccuracy: true, maximumAge: 500, timeout: 10000 }
-)};
+/* ============================
+ * 100ms RENDER LOOP
+ * ============================ */
+
+function startRenderLoop() {
+    if (renderTimer) return;
+
+    renderTimer = setInterval(() => {
+        if (!lastFix) return;
+        renderFrame(lastFix);
+    }, RENDER_INTERVAL_MS);
+}
+
+function stopRenderLoop() {
+    clearInterval(renderTimer);
+    renderTimer = null;
+}
+
+function renderFrame(fix) {
+    if (!displayedPosition) {
+        displayedPosition = { ...fix };
+    }
+
+    // Smooth interpolation (Google Maps style)
+    displayedPosition.lat += (fix.lat - displayedPosition.lat) * 0.25;
+    displayedPosition.lng += (fix.lng - displayedPosition.lng) * 0.25;
+
+    userAdvancedMarker.position = displayedPosition;
+
+    accuracyCircle.setCenter(displayedPosition);
+    accuracyCircle.setRadius(fix.accuracy);
+
+    map.setOptions({
+        zoom: 18,
+        heading: fix.heading ?? map.getHeading() ?? 0,
+        tilt: 45
+    });
+
+    map.panTo(displayedPosition);
+
+    // 🚨 Navigation logic uses REAL GPS, not interpolated
+    checkStepProgress(fix);
+    checkOffRoute(fix);
+}
+
 
 /* ============================
  * STEP PROGRESSION
@@ -290,6 +340,7 @@ function updateInstruction() {
   if (!step) {
     container.innerHTML = "<strong>Destination reached</strong>";
     navigator.geolocation.clearWatch(watchId);
+    stopRenderLoop();
     return;
   }
 
@@ -299,8 +350,8 @@ function updateInstruction() {
       font-family:Roboto,sans-serif;
       border-radius:12px;
       box-shadow:0 4px 12px rgba(0,0,0,.15)
-      background-color: #000;
-      color: #FFF;
+      background-color: #FFF;
+      color: #000;
       ">
       <div style="font-size:32px">${turnIcon(step)}</div>
       <strong>${step.instruction}</strong><br>
