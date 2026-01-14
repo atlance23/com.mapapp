@@ -338,7 +338,7 @@ function renderFrame(fix) {
  *  ===========================
  *  #### ROUTE PROGRESSION ####
  *  ===========================
- *  Updated: @v1.0.1
+ *  Updated: @v1.0.2
  *  By: @atlance23
  */
 
@@ -375,37 +375,6 @@ async function checkRouteDeviation(position) {
             rerouting = false;
         });
 }
-
-
-/** 
- *  ==================================
- *  #### OPTIMIZED AUTO-REROUTING ####
- *  ================================== 
- *  Updated: @v1.0.0
- *  By: @atlance23
- */
-
-async function checkRouteDeviation(position) {
-    if (rerouting || !routeCoords.length) return;
-
-    const offRoute = distanceFromRoute(position);
-    if (offRoute < REROUTE_THRESHOLD_METERS) return;
-
-    const now = Date.now();
-    const cooldown = offRoute > 120 ? 3000 : 6000; // adaptive cooldown
-    if (now - lastRerouteTime < cooldown) return;
-
-    rerouting = true;
-    lastRerouteTime = now;
-
-    const dst = routeCoords[routeCoords.length - 1];
-
-    // Fire reroute without blocking UI
-    fetchORSData(position, dst)
-        .then(geojson => startNav(geojson))
-        .catch(e => console.warn("[NAV] Reroute failed", e))
-        .finally(() => rerouting = false);
-};
 
 function distanceFromRoute(position) {
     let min = Infinity;
