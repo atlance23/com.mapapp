@@ -351,6 +351,35 @@ function renderFrame(fix) {
  *  By: @atlance23
  */
 
+function checkRouteProgress(position) {
+    const step = navSteps[currentStepIndex];
+    if (!step) return;
+
+    const target = routeCoords[step.way_points[1]];
+
+    const dist = google.maps.geometry.spherical.computeDistanceBetween(
+        new google.maps.LatLng(position.lat, position.lng),
+        new google.maps.LatLng(target.lat, target.lng)
+    );
+
+    if (map.getZoom() !== 18) {
+        map.setZoom(18);
+    }
+
+    if (dist < STEP_ARRIVAL_METERS) {
+        currentStepIndex++;
+        updateInstructionUI();
+    }
+};
+
+/** 
+ *  ==================================
+ *  #### OPTIMIZED AUTO-REROUTING ####
+ *  ================================== 
+ *  Updated: @v1.0.2
+ *  By: @atlance23
+ */
+
 async function checkRouteDeviation(position) {
     if (rerouting || !routeCoords.length) return;
 
