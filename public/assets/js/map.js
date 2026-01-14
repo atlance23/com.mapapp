@@ -308,9 +308,9 @@ function renderFrame(fix) {
      *  By: @atlance23
      */
 
-    // if (!map.getBounds()?.contains(displayedPosition)) {
-    //     map.panTo(displayedPosition);
-    // }
+    if (!map.getBounds()?.contains(displayedPosition)) {
+        map.panTo(displayedPosition);
+    }
 
     /**
      *  =====================================
@@ -321,12 +321,12 @@ function renderFrame(fix) {
      */
 
     // Hard lock function
-    map.moveCamera({
-        center: displayedPosition,
-        heading: heading ?? map.getHeading() ?? 0,
-        tilt: 45,
-        zoom: 18
-    });
+    // map.moveCamera({
+    //     center: displayedPosition,
+    //     heading: heading ?? map.getHeading() ?? 0,
+    //     tilt: 45,
+    //     zoom: 18
+    // });
 
     // Navigation logic uses REAL GPS, not interpolated
     checkRouteProgress(fix);
