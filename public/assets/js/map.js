@@ -57,6 +57,7 @@ let lastNearestIndex = 0;
 let prevFixTime = 0;
 let lastVelocity = null;
 let offRouteCount = 0;
+let mapInitialized = false;
 
 
 /**
@@ -308,25 +309,33 @@ function renderFrame(fix) {
      *  By: @atlance23
      */
 
-    if (!map.getBounds()?.contains(displayedPosition)) {
-        map.panTo(displayedPosition);
-    }
+    // if (!map.getBounds()?.contains(displayedPosition)) {
+    //     map.panTo(displayedPosition);
+    // }
 
     /**
      *  =====================================
      *  #### ADD IN v1.0.1 FOR HARD LOCK ####
      *  =====================================
-     *  Updated: v1.0.1
+     *  Updated: v1.0.3
      *  By: @atlance23
      */
 
     // Hard lock function
-    // map.moveCamera({
-    //     center: displayedPosition,
-    //     heading: heading ?? map.getHeading() ?? 0,
-    //     tilt: 45,
-    //     zoom: 18
-    // });
+    // === ONE-TIME MAP INITIALIZATION (REQUIRED FOR POLYLINE) ===
+    if (!mapInitialized) {
+        map.panTo(displayedPosition); // forces bounds + render pipeline
+        mapInitialized = true;
+        return; // let next frame take over
+    }
+
+    // === HARD CAMERA LOCK (NAV MODE) ===
+    map.moveCamera({
+        center: displayedPosition,
+        heading: heading ?? map.getHeading() ?? 0,
+        tilt: 45,
+        zoom: 18
+    });
 
     // Navigation logic uses REAL GPS, not interpolated
     checkRouteProgress(fix);
