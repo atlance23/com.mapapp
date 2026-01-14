@@ -24,6 +24,21 @@ const REROUTE_THRESHOLD_METERS = 80;
 const METERS_PER_MILE = 1609.344;
 const CENTER_COORDINATES = { lat: 38.6251, lng: -90.1868 };
 
+// How many seconds ahead to announce a maneuver
+const TURN_LOOKAHEAD_SECONDS = 8;
+
+// Minimum distance to announce (meters)
+const MIN_TURN_LOOKAHEAD_METERS = 100;
+
+// Maximum distance to announce (meters)
+const MAX_TURN_LOOKAHEAD_METERS = 800;
+
+// Hard cooldown to prevent GPS jitter reroutes
+const REROUTE_COOLDOWN_MS = 8000;
+
+// Number of consecutive off-route detections required
+const OFF_ROUTE_CONFIRMATIONS = 3;
+
 let map;
 let watchId;
 let renderTimer;
@@ -41,6 +56,7 @@ let lastRerouteTime = 0;
 let lastNearestIndex = 0;
 let prevFixTime = 0;
 let lastVelocity = null;
+let offRouteCount = 0;
 
 
 /**
@@ -284,9 +300,33 @@ function renderFrame(fix) {
         tilt: 45
     });
 
-    if (!map.getBounds()?.contains(displayedPosition)) {
-        map.panTo(displayedPosition);
-    }
+    /**
+     *  =============================================
+     *  #### NOTE: REMOVED IN v1.0.1 FOR TESTING ####
+     *  =============================================
+     *  Updated: @v1.0.1
+     *  By: @atlance23
+     */
+
+    // if (!map.getBounds()?.contains(displayedPosition)) {
+    //     map.panTo(displayedPosition);
+    // }
+
+    /**
+     *  =====================================
+     *  #### ADD IN v1.0.1 FOR HARD LOCK ####
+     *  =====================================
+     *  Updated: v1.0.1
+     *  By: @atlance23
+     */
+
+    // Hard lock function
+    map.moveCamera({
+        center: displayedPosition,
+        heading: heading ?? map.getHeading() ?? 0,
+        tilt: 45,
+        zoom: 18
+    });
 
     // Navigation logic uses REAL GPS, not interpolated
     checkRouteProgress(fix);
@@ -298,30 +338,43 @@ function renderFrame(fix) {
  *  ===========================
  *  #### ROUTE PROGRESSION ####
  *  ===========================
- *  Updated: @v1.0.0
+ *  Updated: @v1.0.1
  *  By: @atlance23
  */
 
-function checkRouteProgress(position) {
-    const step = navSteps[currentStepIndex];
-    if (!step) return;
+async function checkRouteDeviation(position) {
+    if (rerouting || !routeCoords.length) return;
 
-    const target = routeCoords[step.way_points[1]];
+    const offRoute = distanceFromRoute(position);
 
-    const dist = google.maps.geometry.spherical.computeDistanceBetween(
-        new google.maps.LatLng(position.lat, position.lng),
-        new google.maps.LatLng(target.lat, target.lng)
-    );
-
-    if (map.getZoom() !== 18) {
-        map.setZoom(18);
+    // === STILL ON ROUTE → RESET ===
+    if (offRoute < REROUTE_THRESHOLD_METERS) {
+        offRouteCount = 0;
+        return;
     }
 
-    if (dist < STEP_ARRIVAL_METERS) {
-        currentStepIndex++;
-        updateInstructionUI();
-    }
-};
+    // === REQUIRE MULTIPLE CONFIRMATIONS ===
+    offRouteCount++;
+    if (offRouteCount < OFF_ROUTE_CONFIRMATIONS) return;
+
+    // === HARD COOLDOWN ===
+    const now = Date.now();
+    if (now - lastRerouteTime < REROUTE_COOLDOWN_MS) return;
+
+    // === LOCK + REROUTE ===
+    rerouting = true;
+    lastRerouteTime = now;
+    offRouteCount = 0;
+
+    const dst = routeCoords[routeCoords.length - 1];
+
+    fetchORSData(position, dst)
+        .then(geojson => startNav(geojson))
+        .catch(e => console.warn("[NAV] Reroute failed", e))
+        .finally(() => {
+            rerouting = false;
+        });
+}
 
 
 /** 
